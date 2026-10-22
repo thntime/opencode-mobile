@@ -1,0 +1,171 @@
+name: Android APK
+
+# 只为「打一个可安装的 APK」服务：手动触发，产物上传为 workflow artifact；
+# 推 v* 标签时额外挂到 GitHub Release。不做 Play 上传，也不依赖 validate 工作流。
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: 'Android applicationId（与官方包名区分，避免安装冲突）'
+        required: false
+        default: 'app.getopencode.relay'
+      abis:
+        description: '目标 ABI（逗号分隔，例如 arm64-v8a 或 arm64-v8a,x86_64）'
+        required: false
+        default: 'arm64-v8a'
+      build_aab:
+        description: '同时构建 AAB（Play 上传用，通常不需要）'
+        required: false
+        default: 'false'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      EXPO_APP_VARIANT: production
+      EXPO_ANDROID_PACKAGE: ${{ inputs.package_id || 'app.getopencode.relay' }}
+      ANDROID_RELEASE_ABIS: ${{ inputs.abis || 'arm64-v8a' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # AGP 按需下载的 CMake 偶尔会拿到截断包并中途失败，先带重试预装。
+      - name: Install CMake
+        shell: bash
+        run: |
+          set -eo pipefail
+          for attempt in 1 2 3; do
+            if sdkmanager --install 'cmake;3.22.1' </dev/null; then
+              exit 0
+            fi
+            rm -rf "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/.temp"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Failed to install cmake;3.22.1 after 3 attempts"
+          exit 1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Decode keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -eo pipefail
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::缺少 secret ANDROID_KEYSTORE_BASE64（见 docs/android-apk.md）"
+            exit 1
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE_PATH"
+          SIZE=$(stat -c%s "$KEYSTORE_PATH")
+          echo "keystore size=$SIZE sha256=$(sha256sum "$KEYSTORE_PATH" | cut -d' ' -f1)"
+          if [ "$SIZE" -lt 100 ]; then
+            echo "::error::解出的 keystore 过小，检查 ANDROID_KEYSTORE_BASE64"
+            exit 1
+          fi
+
+      - name: Build release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -eo pipefail
+          for name in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::缺少 secret $name（见 docs/android-apk.md）"
+              exit 1
+            fi
+          done
+          npm run build:android
+
+      - name: Verify signature
+        shell: bash
+        run: |
+          set -eo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -eo pipefail
+          PKG="${{ env.EXPO_ANDROID_PACKAGE }}"
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          OUT="opencode-mobile-${PKG##*.}-${GITHUB_RUN_NUMBER}.apk"
+          cp "$APK" "$OUT"
+          echo "APK_NAME=$OUT" >> "$GITHUB_ENV"
+          {
+            echo "### Android APK"
+            echo ""
+            echo "- 包名：\`$PKG\`"
+            echo "- ABI：\`${{ env.ANDROID_RELEASE_ABIS }}\`"
+            echo "- 提交：\`${GITHUB_SHA}\`"
+            echo "- 大小：$(du -h "$OUT" | cut -f1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_NAME }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload AAB artifact
+        if: ${{ inputs.build_aab == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-mobile-${{ github.run_number }}.aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APK to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ env.APK_NAME }}
