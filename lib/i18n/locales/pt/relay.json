@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "Entrar no Relay",
+    "subtitle": "Entre no seu Relay auto-hospedado para acessar os computadores registrados nele.",
+    "relayUrl": "Endereço do Relay",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "Conta (e-mail)",
+    "password": "Senha",
+    "submit": "Entrar",
+    "advanced": "Opções avançadas",
+    "scan": "Escanear um código QR",
+    "manual": "Digitar o endereço do servidor manualmente",
+    "errors": {
+      "invalidRequest": "Verifique o endereço do Relay, a conta e a senha.",
+      "invalidCredentials": "A conta ou a senha está incorreta.",
+      "unreachable": "Não foi possível alcançar o Relay. Verifique o endereço e tente novamente.",
+      "rejected": "O Relay recusou o login. Tente novamente mais tarde.",
+      "invalidResponse": "O Relay retornou uma resposta inesperada."
+    }
+  },
+  "hosts": {
+    "title": "Escolha um computador",
+    "subtitle": "Estes computadores estão registrados no seu Relay. Escolha um para conectar.",
+    "online": "Online",
+    "offline": "Offline",
+    "lastSeen": "Online pela última vez {{time}}",
+    "neverSeen": "Ainda não visto",
+    "empty": "Nenhum computador ainda. Execute opencode-tunnel start no seu computador e puxe para baixo para atualizar.",
+    "refresh": "Atualizar",
+    "loadError": "Não foi possível carregar a lista de computadores. Puxe para baixo para tentar novamente.",
+    "selectError": "Não foi possível abrir este computador. Verifique a conexão e tente novamente."
+  },
+  "chooser": {
+    "relay": "Usar um Relay auto-hospedado",
+    "relayHint": "Entre no seu próprio servidor Relay para acessar seus computadores.",
+    "advanced": "Opções avançadas"
+  },
+  "unlock": {
+    "title": "Desbloquear {{name}}",
+    "body": "Este computador usa criptografia de ponta a ponta. Digite a frase-senha definida nele para continuar.",
+    "passphrase": "Frase-senha",
+    "submit": "Desbloquear e conectar",
+    "badPassphrase": "A frase-senha está incorreta. Tente novamente.",
+    "unavailable": "Não foi possível alcançar o Relay. Verifique-o e tente novamente."
+  }
+}

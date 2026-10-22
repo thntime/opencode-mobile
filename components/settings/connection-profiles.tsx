@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Button, List, Text } from 'react-native-paper';
@@ -37,6 +37,7 @@ function connectionHost(serverUrl: string) {
 
 export function ConnectionProfiles({ palette, onManageConnect, onPair }: { palette: Palette; onManageConnect?: () => void; onPair?: () => void }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const registry = useWorkspaces();
   const { settings, connection, connect, updateSettings, connectSetup, connectionProfiles } = useConnection();
   const { profiles, refresh, connect: connectProfile, passwordForEditing, save, remove } = connectionProfiles;
@@ -294,7 +295,7 @@ export function ConnectionProfiles({ palette, onManageConnect, onPair }: { palet
         </Text>
       ) : null}
       <OverlaySheet visible={choosing} title={t('settings:connection.addConnection')} onClose={() => setChoosing(false)} fitContent testID="connection-method-sheet">
-        <ConnectionMethodChooser onScan={() => { setChoosing(false); setScanning(true); }} onManual={() => { setChoosing(false); setDialog({ mode: 'add' }); }} onPair={() => { setChoosing(false); onPair?.(); }} />
+        <ConnectionMethodChooser onScan={() => { setChoosing(false); setScanning(true); }} onManual={() => { setChoosing(false); setDialog({ mode: 'add' }); }} onPair={() => { setChoosing(false); onPair?.(); }} onRelay={() => { setChoosing(false); router.push('/relay-login'); }} />
       </OverlaySheet>
       {scanning ? (
         <ConnectionScanFlow

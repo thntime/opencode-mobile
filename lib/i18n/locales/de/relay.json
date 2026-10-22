@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "Bei Relay anmelden",
+    "subtitle": "Melde dich bei deinem selbst gehosteten Relay an, um die darauf registrierten Computer zu erreichen.",
+    "relayUrl": "Relay-Adresse",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "Konto (E-Mail)",
+    "password": "Passwort",
+    "submit": "Anmelden",
+    "advanced": "Erweiterte Optionen",
+    "scan": "QR-Code scannen",
+    "manual": "Serveradresse manuell eingeben",
+    "errors": {
+      "invalidRequest": "Überprüfe Relay-Adresse, Konto und Passwort.",
+      "invalidCredentials": "Konto oder Passwort ist falsch.",
+      "unreachable": "Der Relay ist nicht erreichbar. Überprüfe die Adresse und versuche es erneut.",
+      "rejected": "Der Relay hat die Anmeldung abgelehnt. Versuche es später erneut.",
+      "invalidResponse": "Der Relay hat eine unerwartete Antwort zurückgegeben."
+    }
+  },
+  "hosts": {
+    "title": "Computer auswählen",
+    "subtitle": "Diese Computer sind bei deinem Relay registriert. Wähle einen zum Verbinden aus.",
+    "online": "Online",
+    "offline": "Offline",
+    "lastSeen": "Zuletzt online {{time}}",
+    "neverSeen": "Noch nicht gesehen",
+    "empty": "Noch keine Computer. Führe opencode-tunnel start auf deinem Computer aus und ziehe dann zum Aktualisieren nach unten.",
+    "refresh": "Aktualisieren",
+    "loadError": "Die Computerliste konnte nicht geladen werden. Ziehe nach unten, um es erneut zu versuchen.",
+    "selectError": "Dieser Computer konnte nicht geöffnet werden. Prüfe die Verbindung und versuche es erneut."
+  },
+  "chooser": {
+    "relay": "Selbst gehosteten Relay verwenden",
+    "relayHint": "Melde dich bei deinem eigenen Relay-Server an, um deine Computer zu erreichen.",
+    "advanced": "Erweiterte Optionen"
+  },
+  "unlock": {
+    "title": "{{name}} entsperren",
+    "body": "Dieser Computer ist Ende-zu-Ende-verschlüsselt. Gib die auf ihm festgelegte Passphrase ein, um fortzufahren.",
+    "passphrase": "Passphrase",
+    "submit": "Entsperren und verbinden",
+    "badPassphrase": "Die Passphrase ist falsch. Versuche es erneut.",
+    "unavailable": "Der Relay ist nicht erreichbar. Überprüfe ihn und versuche es erneut."
+  }
+}

@@ -41,7 +41,7 @@ describe('multi-server contracts', () => {
     expect(cancelled).toBe(1);
   });
   it('validates registry identities and never persists credentials', async () => {
-    const parsing = await loadTs('providers/persisted-preferences.ts', { '@/lib/connect': { parseConnectMetadata: () => undefined }, '@/lib/opencode/client/url': { stripServerUrlCredentials: (value: string) => value }, '@/providers/opencode-preferences': { normalizeTranscriptFontSize: (value: number) => value } });
+    const parsing = await loadTs('providers/persisted-preferences.ts', { '@/lib/connect': { parseConnectMetadata: () => undefined }, '@/lib/opencode/client/url': { stripServerUrlCredentials: (value: string) => value }, '@/providers/opencode-preferences': { normalizeTranscriptFontSize: (value: number) => value }, '@/lib/relay/types': { parseRelayAuth: () => undefined } });
     const { parseWorkspaces, serializeWorkspaces } = await loadTs('providers/workspace-storage.ts', {
       '@/lib/connection-password': { withoutConnectionPassword: ({ password, ...value }: any) => value }, '@/lib/connection-scope': identity,
       '@/lib/opencode/client': { isValidServerUrl: (value: string) => value.startsWith('http') }, '@/providers/persisted-preferences': parsing,

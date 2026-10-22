@@ -1,5 +1,6 @@
 import type { OpencodeConnectionSettings } from '@/lib/opencode/client';
 import { parseConnectMetadata } from '@/lib/connect';
+import { parseRelayAuth } from '@/lib/relay/types';
 import { stripServerUrlCredentials } from '@/lib/opencode/client/url';
 import { normalizeTranscriptFontSize, type ChatPreferences } from '@/providers/opencode-preferences';
 
@@ -22,6 +23,12 @@ export function parseConnectionSettings(raw: string): Partial<OpencodeConnection
     const connect = parseConnectMetadata(value.connect);
     if (!connect || connect.deviceId !== settings.username?.trim()) throw new Error('Invalid Cloud Link identity.');
     settings.connect = connect;
+  }
+  // An unreadable relay block degrades to a direct connection instead of
+  // discarding the whole record.
+  if (value.relay !== undefined) {
+    const relay = parseRelayAuth(value.relay);
+    if (relay) settings.relay = relay;
   }
   return settings;
 }

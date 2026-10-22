@@ -60,6 +60,9 @@ describe('local pairing', () => {
       './read-deadline': readDeadline, 'base-64': {}, 'expo/fetch': { fetch: async () => response },
       '../data-usage': { recordBytes: () => {}, recordRequest: () => {} },
       '@/lib/connect': { getConnectCredentialError: () => undefined }, './url': {},
+      '@/lib/relay/token-cache': { cachedRelayToken: () => undefined },
+      '@/lib/relay/refresh': { RelayReauthRequiredError: class extends Error {}, clearRelaySession: async () => undefined, refreshRelayToken: async () => ({ status: 'needs_reauth' }), relayTokenExpiryHint: () => undefined },
+      '@/lib/relay/fetch-e2e': { relayHostKeyFor: () => undefined, encryptRelayRequest: async (init: RequestInit | undefined) => init, decryptRelayResponse: async (response: Response) => response },
     }, { fetch: async () => response });
     const html = (status: number) => new Response('<html>Cloudflare Error 1033</html>', { status, headers: { 'content-type': 'text/html' } });
     let response = html(530);
@@ -79,6 +82,9 @@ describe('local pairing', () => {
       './read-deadline': readDeadline, 'base-64': {}, 'expo/fetch': { fetch: nativeFetch },
       '../data-usage': { recordBytes: () => {}, recordRequest: () => {} },
       '@/lib/connect': { getConnectCredentialError: () => undefined }, './url': {},
+      '@/lib/relay/token-cache': { cachedRelayToken: () => undefined },
+      '@/lib/relay/refresh': { RelayReauthRequiredError: class extends Error {}, clearRelaySession: async () => undefined, refreshRelayToken: async () => ({ status: 'needs_reauth' }), relayTokenExpiryHint: () => undefined },
+      '@/lib/relay/fetch-e2e': { relayHostKeyFor: () => undefined, encryptRelayRequest: async (init: RequestInit | undefined) => init, decryptRelayResponse: async (response: Response) => response },
     }, { fetch: manualFetch });
     await transport.fetchConnection('http://example.test/api/info');
     await transport.fetchConnection('http://example.test/auth/connect/code', { redirect: 'error' });

@@ -11,6 +11,7 @@ import enCommon from '@/lib/i18n/locales/en/common.json';
 import enNotifications from '@/lib/i18n/locales/en/notifications.json';
 import enOnboarding from '@/lib/i18n/locales/en/onboarding.json';
 import enProject from '@/lib/i18n/locales/en/project.json';
+import enRelay from '@/lib/i18n/locales/en/relay.json';
 import enSettings from '@/lib/i18n/locales/en/settings.json';
 import enShare from '@/lib/i18n/locales/en/share.json';
 import enTerminal from '@/lib/i18n/locales/en/terminal.json';
@@ -19,6 +20,7 @@ import deCommon from '@/lib/i18n/locales/de/common.json';
 import deNotifications from '@/lib/i18n/locales/de/notifications.json';
 import deOnboarding from '@/lib/i18n/locales/de/onboarding.json';
 import deProject from '@/lib/i18n/locales/de/project.json';
+import deRelay from '@/lib/i18n/locales/de/relay.json';
 import deSettings from '@/lib/i18n/locales/de/settings.json';
 import deShare from '@/lib/i18n/locales/de/share.json';
 import deTerminal from '@/lib/i18n/locales/de/terminal.json';
@@ -27,6 +29,7 @@ import esCommon from '@/lib/i18n/locales/es/common.json';
 import esNotifications from '@/lib/i18n/locales/es/notifications.json';
 import esOnboarding from '@/lib/i18n/locales/es/onboarding.json';
 import esProject from '@/lib/i18n/locales/es/project.json';
+import esRelay from '@/lib/i18n/locales/es/relay.json';
 import esSettings from '@/lib/i18n/locales/es/settings.json';
 import esShare from '@/lib/i18n/locales/es/share.json';
 import esTerminal from '@/lib/i18n/locales/es/terminal.json';
@@ -35,6 +38,7 @@ import frCommon from '@/lib/i18n/locales/fr/common.json';
 import frNotifications from '@/lib/i18n/locales/fr/notifications.json';
 import frOnboarding from '@/lib/i18n/locales/fr/onboarding.json';
 import frProject from '@/lib/i18n/locales/fr/project.json';
+import frRelay from '@/lib/i18n/locales/fr/relay.json';
 import frSettings from '@/lib/i18n/locales/fr/settings.json';
 import frShare from '@/lib/i18n/locales/fr/share.json';
 import frTerminal from '@/lib/i18n/locales/fr/terminal.json';
@@ -43,6 +47,7 @@ import hiCommon from '@/lib/i18n/locales/hi/common.json';
 import hiNotifications from '@/lib/i18n/locales/hi/notifications.json';
 import hiOnboarding from '@/lib/i18n/locales/hi/onboarding.json';
 import hiProject from '@/lib/i18n/locales/hi/project.json';
+import hiRelay from '@/lib/i18n/locales/hi/relay.json';
 import hiSettings from '@/lib/i18n/locales/hi/settings.json';
 import hiShare from '@/lib/i18n/locales/hi/share.json';
 import hiTerminal from '@/lib/i18n/locales/hi/terminal.json';
@@ -51,6 +56,7 @@ import jaCommon from '@/lib/i18n/locales/ja/common.json';
 import jaNotifications from '@/lib/i18n/locales/ja/notifications.json';
 import jaOnboarding from '@/lib/i18n/locales/ja/onboarding.json';
 import jaProject from '@/lib/i18n/locales/ja/project.json';
+import jaRelay from '@/lib/i18n/locales/ja/relay.json';
 import jaSettings from '@/lib/i18n/locales/ja/settings.json';
 import jaShare from '@/lib/i18n/locales/ja/share.json';
 import jaTerminal from '@/lib/i18n/locales/ja/terminal.json';
@@ -59,6 +65,7 @@ import ptCommon from '@/lib/i18n/locales/pt/common.json';
 import ptNotifications from '@/lib/i18n/locales/pt/notifications.json';
 import ptOnboarding from '@/lib/i18n/locales/pt/onboarding.json';
 import ptProject from '@/lib/i18n/locales/pt/project.json';
+import ptRelay from '@/lib/i18n/locales/pt/relay.json';
 import ptSettings from '@/lib/i18n/locales/pt/settings.json';
 import ptShare from '@/lib/i18n/locales/pt/share.json';
 import ptTerminal from '@/lib/i18n/locales/pt/terminal.json';
@@ -67,6 +74,7 @@ import zhCommon from '@/lib/i18n/locales/zh/common.json';
 import zhNotifications from '@/lib/i18n/locales/zh/notifications.json';
 import zhOnboarding from '@/lib/i18n/locales/zh/onboarding.json';
 import zhProject from '@/lib/i18n/locales/zh/project.json';
+import zhRelay from '@/lib/i18n/locales/zh/relay.json';
 import zhSettings from '@/lib/i18n/locales/zh/settings.json';
 import zhShare from '@/lib/i18n/locales/zh/share.json';
 import zhTerminal from '@/lib/i18n/locales/zh/terminal.json';
@@ -78,6 +86,7 @@ export const resources = {
     notifications: enNotifications,
     onboarding: enOnboarding,
     project: enProject,
+    relay: enRelay,
     settings: enSettings,
     share: enShare,
     terminal: enTerminal,
@@ -88,6 +97,7 @@ export const resources = {
     notifications: deNotifications,
     onboarding: deOnboarding,
     project: deProject,
+    relay: deRelay,
     settings: deSettings,
     share: deShare,
     terminal: deTerminal,
@@ -98,6 +108,7 @@ export const resources = {
     notifications: esNotifications,
     onboarding: esOnboarding,
     project: esProject,
+    relay: esRelay,
     settings: esSettings,
     share: esShare,
     terminal: esTerminal,
@@ -108,6 +119,7 @@ export const resources = {
     notifications: frNotifications,
     onboarding: frOnboarding,
     project: frProject,
+    relay: frRelay,
     settings: frSettings,
     share: frShare,
     terminal: frTerminal,
@@ -118,6 +130,7 @@ export const resources = {
     notifications: hiNotifications,
     onboarding: hiOnboarding,
     project: hiProject,
+    relay: hiRelay,
     settings: hiSettings,
     share: hiShare,
     terminal: hiTerminal,
@@ -128,6 +141,7 @@ export const resources = {
     notifications: jaNotifications,
     onboarding: jaOnboarding,
     project: jaProject,
+    relay: jaRelay,
     settings: jaSettings,
     share: jaShare,
     terminal: jaTerminal,
@@ -138,6 +152,7 @@ export const resources = {
     notifications: ptNotifications,
     onboarding: ptOnboarding,
     project: ptProject,
+    relay: ptRelay,
     settings: ptSettings,
     share: ptShare,
     terminal: ptTerminal,
@@ -148,6 +163,7 @@ export const resources = {
     notifications: zhNotifications,
     onboarding: zhOnboarding,
     project: zhProject,
+    relay: zhRelay,
     settings: zhSettings,
     share: zhShare,
     terminal: zhTerminal,

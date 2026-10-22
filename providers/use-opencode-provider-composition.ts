@@ -1,5 +1,6 @@
 import { emptySharedInput } from '@/providers/use-share-state';
 import type { OpencodeEvent } from '@/lib/opencode/events';
+import type { ConnectionIdentity } from '@/lib/connection-scope';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { buildClient, getRequestHeaders } from '@/lib/opencode/client';
@@ -26,6 +27,8 @@ import { useSessionActions } from '@/providers/use-session-actions';
 import { usePromptInbox } from '@/providers/use-prompt-inbox';
 import { usePromptLifecycle } from '@/providers/use-prompt-lifecycle';
 import { useConnectionActions } from '@/providers/use-connection-actions';
+import { useConnectionScopeReset } from '@/providers/use-connection-scope-reset';
+import { sessionScopeChanged } from '@/providers/session-scope-cache';
 import { useOpencodeProviderValues } from '@/providers/opencode-provider-values';
 
 import type { WorkspaceRuntimeInput } from '@/providers/workspace-types';
@@ -55,6 +58,8 @@ export function useOpencodeProviderComposition(input: WorkspaceRuntimeInput) {
     setProjectFileStatuses,
     setSelectedProjectFile,
     setVcsInfo,
+    clearSessionCaches,
+    sessionScopeRef,
     bootstrapPromiseRef,
     bootstrapTokenRef,
     busyNotificationsRef,
@@ -64,6 +69,7 @@ export function useOpencodeProviderComposition(input: WorkspaceRuntimeInput) {
     catalogGenerationRef,
     scopeGenerationRef,
     serverGenerationRef,
+    settingsRef,
   } = state;
 
   const refreshProjectCatalogRef = useRef<(silent?: boolean) => Promise<void>>(async () => undefined);
@@ -167,7 +173,11 @@ export function useOpencodeProviderComposition(input: WorkspaceRuntimeInput) {
   const { resetTerminal } = terminal;
   const { reset: resetTranscript } = transcript;
   const { resetWorktrees } = worktree;
-  const clearProjectState = useCallback(() => {
+  const clearProjectState = useCallback((next?: ConnectionIdentity) => {
+    // Session caches are only valid for the connection that produced them. A
+    // same-host reconnect keeps them; moving to another server or relay host
+    // drops them so an old session id cannot resolve against the new host.
+    if (sessionScopeChanged(sessionScopeRef.current, next ?? settingsRef.current)) clearSessionCaches();
     bootstrapPromiseRef.current = null;
     bootstrapTokenRef.current = undefined;
     busyNotificationsRef.current.clear();
@@ -195,7 +205,7 @@ export function useOpencodeProviderComposition(input: WorkspaceRuntimeInput) {
     resetMcpState();
     resetTerminal();
     resetWorktrees();
-  }, [resetMcpState, resetPermissionRules, resetTerminal, resetTranscript, resetWorktrees, bootstrapPromiseRef, bootstrapTokenRef, busyNotificationsRef, sessionRefreshOptionsRef, sessionRefreshTimeoutsRef, setArchivedSessions, setAvailableAgents, setAvailableModels, setAvailableProviders, setCommands, setCurrentConfig, setCurrentSessionId, setMcpAuthPrompt, setPendingPermissionsBySession, setPendingQuestionsBySession, setProviderAuthMethodsById, setSelectedProjectFile, setSessionStatuses, setSessions, setVcsInfo, setProjectFileStatuses]);
+  }, [resetMcpState, resetPermissionRules, resetTerminal, resetTranscript, resetWorktrees, bootstrapPromiseRef, bootstrapTokenRef, busyNotificationsRef, clearSessionCaches, sessionScopeRef, sessionRefreshOptionsRef, sessionRefreshTimeoutsRef, settingsRef, setArchivedSessions, setAvailableAgents, setAvailableModels, setAvailableProviders, setCommands, setCurrentConfig, setCurrentSessionId, setMcpAuthPrompt, setPendingPermissionsBySession, setPendingQuestionsBySession, setProviderAuthMethodsById, setSelectedProjectFile, setSessionStatuses, setSessions, setVcsInfo, setProjectFileStatuses]);
 
   const softResetProjectState = useCallback(() => {
     // Same-machine credential rotation: keep server-derived data (still valid
@@ -207,6 +217,17 @@ export function useOpencodeProviderComposition(input: WorkspaceRuntimeInput) {
     sessionRefreshTimeoutsRef.current = {};
     sessionRefreshOptionsRef.current = {};
   }, [bootstrapPromiseRef, bootstrapTokenRef, sessionRefreshOptionsRef, sessionRefreshTimeoutsRef]);
+
+  // A host change must also tear down the surfaces that outlive a client
+  // instance: terminal transports, the command catalog, and the shared event
+  // transport whose buffered envelope would otherwise be replayed to the new
+  // host. A same-host reconnect keeps all of them.
+  const resetConnectionSurfaces = useCallback(() => {
+    resetTerminal();
+    setCommands([]);
+    input.connection.events.reset();
+  }, [input.connection.events, resetTerminal, setCommands]);
+  useConnectionScopeReset({ scope: state.connectionScope, onScopeChange: resetConnectionSurfaces });
 
   const project = useProjectActions({ ...state, client, catalogClient, isCurrentClient, isCurrentCatalogClient, clearProjectState, isHydrated, refreshMessages: inbox.refreshMessages });
 
@@ -320,6 +341,7 @@ export function useOpencodeProviderComposition(input: WorkspaceRuntimeInput) {
     subscribe: input.connection.events,
     activeProjectPath: state.activeProjectPath,
     connected: state.connection.status === 'connected',
+    connectionScope: state.connectionScope,
     pendingSessionIds: Object.keys(inbox.pendingPromptsBySession).filter((id) => inbox.pendingPromptsBySession[id].length > 0),
     busy: Object.values(inbox.pendingPromptsBySession).some((prompts) => prompts.length > 0) || prompt.sendingState.active || conversationPhase !== 'off' || Object.values(state.sessionStatuses).some((status) => status.type !== 'idle'),
     currentSessionId: state.currentSessionId,

@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "Sign in to Relay",
+    "subtitle": "Sign in to your self-hosted Relay to reach the computers registered to it.",
+    "relayUrl": "Relay address",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "Account (email)",
+    "password": "Password",
+    "submit": "Sign in",
+    "advanced": "Advanced options",
+    "scan": "Scan a QR code",
+    "manual": "Enter a server address manually",
+    "errors": {
+      "invalidRequest": "Check the Relay address, account, and password.",
+      "invalidCredentials": "The account or password is incorrect.",
+      "unreachable": "Could not reach the Relay. Check the address and try again.",
+      "rejected": "The Relay rejected the sign-in. Try again later.",
+      "invalidResponse": "The Relay returned an unexpected response."
+    }
+  },
+  "hosts": {
+    "title": "Choose a computer",
+    "subtitle": "These computers are registered to your Relay. Pick one to connect.",
+    "online": "Online",
+    "offline": "Offline",
+    "lastSeen": "Last online {{time}}",
+    "neverSeen": "Not seen yet",
+    "empty": "No computers yet. Run opencode-tunnel start on your computer, then pull down to refresh.",
+    "refresh": "Refresh",
+    "loadError": "Could not load the computer list. Pull down to retry.",
+    "selectError": "Could not open this computer. Check the connection and try again."
+  },
+  "chooser": {
+    "relay": "Use a self-hosted Relay",
+    "relayHint": "Sign in to your own Relay server to reach your computers.",
+    "advanced": "Advanced options"
+  },
+  "unlock": {
+    "title": "Unlock {{name}}",
+    "body": "This computer is end-to-end encrypted. Enter the passphrase you set on it to continue.",
+    "passphrase": "Passphrase",
+    "submit": "Unlock and connect",
+    "badPassphrase": "The passphrase is incorrect. Try again.",
+    "unavailable": "Could not reach the Relay. Check it and try again."
+  }
+}

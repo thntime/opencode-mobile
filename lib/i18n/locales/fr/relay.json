@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "Se connecter au Relay",
+    "subtitle": "Connectez-vous à votre Relay auto-hébergé pour atteindre les ordinateurs qui y sont enregistrés.",
+    "relayUrl": "Adresse du Relay",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "Compte (e-mail)",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "advanced": "Options avancées",
+    "scan": "Scanner un code QR",
+    "manual": "Saisir l'adresse du serveur manuellement",
+    "errors": {
+      "invalidRequest": "Vérifiez l'adresse du Relay, le compte et le mot de passe.",
+      "invalidCredentials": "Le compte ou le mot de passe est incorrect.",
+      "unreachable": "Impossible de joindre le Relay. Vérifiez l'adresse puis réessayez.",
+      "rejected": "Le Relay a refusé la connexion. Réessayez plus tard.",
+      "invalidResponse": "Le Relay a renvoyé une réponse inattendue."
+    }
+  },
+  "hosts": {
+    "title": "Choisir un ordinateur",
+    "subtitle": "Ces ordinateurs sont enregistrés sur votre Relay. Choisissez-en un pour vous connecter.",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "lastSeen": "En ligne il y a {{time}}",
+    "neverSeen": "Jamais vu",
+    "empty": "Aucun ordinateur pour le moment. Exécutez opencode-tunnel start sur votre ordinateur, puis tirez vers le bas pour actualiser.",
+    "refresh": "Actualiser",
+    "loadError": "Impossible de charger la liste des ordinateurs. Tirez vers le bas pour réessayer.",
+    "selectError": "Impossible d’ouvrir cet ordinateur. Vérifiez la connexion et réessayez."
+  },
+  "chooser": {
+    "relay": "Utiliser un Relay auto-hébergé",
+    "relayHint": "Connectez-vous à votre propre serveur Relay pour atteindre vos ordinateurs.",
+    "advanced": "Options avancées"
+  },
+  "unlock": {
+    "title": "Déverrouiller {{name}}",
+    "body": "Cet ordinateur utilise le chiffrement de bout en bout. Saisissez la phrase secrète définie sur cet ordinateur pour continuer.",
+    "passphrase": "Phrase secrète",
+    "submit": "Déverrouiller et se connecter",
+    "badPassphrase": "La phrase secrète est incorrecte. Réessayez.",
+    "unavailable": "Impossible de joindre le Relay. Vérifiez-le puis réessayez."
+  }
+}

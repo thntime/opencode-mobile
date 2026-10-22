@@ -214,6 +214,7 @@ const service = await import(await moduleUri('../../providers/services/terminal-
   [/from '@\/lib\/opencode\/v2\/shared'/g, `from "${uri('export const toShellView = (value) => value;')}"`],
   [/from '@\/lib\/opencode\/compat\/v1\/terminal'/g, `from "${uri('export {};')}"`],
   [/from 'react-native'/g, `from "${native}"`],
+  [/from '@\/lib\/relay\/ws'/g, `from "${uri('export const withRelayEncryption = (socket) => socket;')}"`],
   [/from '@\/lib\/opencode\/client'/g, `from "${uri('export function buildPtyWebSocketUrl() {}')}"`],
   [/from '@\/providers\/services\/require-data'/g, `from "${uri('export function requireData(value) { return value; }')}"`],
 ]));

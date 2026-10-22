@@ -76,6 +76,7 @@ describe('connection profiles', () => {
     const urlUri = await transpileToDataUri('lib/opencode/client/url.ts', [
       [/from '\.\/types'/g, `from "data:text/javascript,export const defaultConnectionSettings = {serverUrl:'http://localhost'};"`],
     ]);
+    const relayTypesUri = await transpileToDataUri('lib/relay/types.ts');
     const connectionPasswordUri = await transpileToDataUri('lib/connection-password.ts', [
       [/from '@\/lib\/opencode\/client\/url'/g, `from "${urlUri}"`],
       [/from '@\/lib\/connect'/g, `from "${connectUri}"`],
@@ -95,6 +96,7 @@ describe('connection profiles', () => {
       [/from 'react-native'/g, `from "${reactNativeStubUri}"`],
       [/from '@\/lib\/connection-password'/g, `from "${connectionPasswordUri}"`],
       [/from '@\/lib\/connection-scope'/g, `from "${connectionScopeUri}"`],
+      [/from '@\/lib\/relay\/types'/g, `from "${relayTypesUri}"`],
       [/from '@\/lib\/storage-keys'/g, `from "${storageKeysUri}"`],
     ]);
 

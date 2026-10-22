@@ -6,7 +6,7 @@ import { ConnectionProfileDialog, type ConnectionProfileFormValues } from '@/com
 import { ConnectionScanFlow } from '@/components/settings/connection-scan-flow';
 import { useConnection } from '@/providers/opencode-contexts';
 
-export function ConnectionSetupForm({ onPair, onConnected, onBusyChange }: { onPair: () => void; onConnected: () => void; onBusyChange: (busy: boolean) => void }) {
+export function ConnectionSetupForm({ onPair, onConnected, onBusyChange, onRelay }: { onPair: () => void; onConnected: () => void; onBusyChange: (busy: boolean) => void; onRelay?: () => void }) {
   const { t } = useTranslation();
   const { settings, connectionProfiles } = useConnection();
   const [mode, setMode] = useState<'manual' | 'scan'>();
@@ -24,7 +24,7 @@ export function ConnectionSetupForm({ onPair, onConnected, onBusyChange }: { onP
   }
   function dismiss() { profileId.current = undefined; setMode(undefined); }
   return <>
-    <ConnectionMethodChooser onScan={() => setMode('scan')} onManual={() => setMode('manual')} onPair={onPair} />
+    <ConnectionMethodChooser onScan={() => setMode('scan')} onManual={() => setMode('manual')} onPair={onPair} onRelay={onRelay} />
     {mode === 'manual' ? <ConnectionProfileDialog title={t('settings:connection.addConnection')} submitLabel={t('settings:connection.saveAndConnect')} initial={{ serverUrl: settings.serverUrl }} onBusyChange={onBusyChange} onSubmit={submit} onDismiss={dismiss} /> : null}
     {mode === 'scan' ? <ConnectionScanFlow onBusyChange={onBusyChange} onSubmit={submit} onDismiss={dismiss} /> : null}
   </>;

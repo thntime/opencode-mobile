@@ -8,6 +8,7 @@ import {
   mutateConnectionProfiles,
 } from '@/lib/connection-profiles';
 import { getConnectCredentialError } from '@/lib/connect';
+import { isRelayReauthRequired, refreshRelayToken, relayWithoutHost } from '@/lib/relay/refresh';
 import {
   buildClient,
   classifyConnectionFailure,
@@ -57,9 +58,6 @@ export function useConnectionConnectActions({
   setProviderAuthMethodsById,
   setAvailableModels,
   setAvailableAgents,
-  setMessagesBySession,
-  setDiffsBySession,
-  setTodosBySession,
   setChatPreferences,
   setDiagnostics,
   setSendingState,
@@ -76,6 +74,18 @@ export function useConnectionConnectActions({
 }: ConnectionActionsInput & { connectSetup: ConnectSetup }) {
   const prepareConnectSettingsRef = useRef<(settings: OpencodeConnectionSettings) => Promise<OpencodeConnectionSettings>>(async (value) => value);
   const connectInFlightRef = useRef<{ key: string; promise: Promise<ConnectionState> } | undefined>(undefined);
+
+  // A Relay session that cannot be refreshed is unrecoverable in place. Drop
+  // the host selection in memory (the token and persisted host are cleared by
+  // the refresh module) so the root guard routes back to /relay-login instead
+  // of leaving the app parked on a fatal connection error.
+  const dropRelayHost = useCallback(() => {
+    const current = settingsRef.current;
+    if (!current.relay?.hostId) return;
+    const next = { ...current, relay: relayWithoutHost(current.relay) };
+    settingsRef.current = next;
+    setSettings(next);
+  }, [settingsRef, setSettings]);
 
   const performConnect = useCallback(async (targetSettings: OpencodeConnectionSettings, onPrepared?: (prepared: OpencodeConnectionSettings) => void): Promise<ConnectionState> => {
     initialConnectStartedRef.current = true;
@@ -172,6 +182,11 @@ export function useConnectionConnectActions({
 
     if (!catalog || !activeCatalogClient || !usedContract) {
       const failure = lastError ?? new Error('Could not reach the OpenCode server.');
+      // The refresh module already cleared the token and persisted host; drop
+      // the in-memory host so the root guard redirects to the login screen.
+      // Some SDK wrappers lose the error `code`, so a classified auth failure
+      // is treated the same way on a relay connection.
+      if (targetSettings.relay && (isRelayReauthRequired(failure) || classifyConnectionFailure(failure) === 'auth')) dropRelayHost();
       const failed: ConnectionState = {
         status: 'error',
         message: getConnectionError(targetSettings.serverUrl, failure),
@@ -220,7 +235,7 @@ export function useConnectionConnectActions({
     }
 
     return connected;
-  }, [activeProjectPath, catalogGenerationRef, clearProjectState, softResetProjectState, isCurrentCatalogClient, loadProjectCatalog, initialConnectStartedRef, serverContractRef, serverGenerationRef, scopeGenerationRef, settingsRef, setAvailableAgents, setAvailableModels, setAvailableProviders, setConnection, setCurrentConfig, setCurrentProjectPath, setProviderAuthMethodsById, setServerContract, setServerProjects, setServerRootPath, setSessionStatuses, setSessions, setSettings, serverProjectsRef, connectionRef]);
+  }, [activeProjectPath, catalogGenerationRef, clearProjectState, dropRelayHost, softResetProjectState, isCurrentCatalogClient, loadProjectCatalog, initialConnectStartedRef, serverContractRef, serverGenerationRef, scopeGenerationRef, settingsRef, setAvailableAgents, setAvailableModels, setAvailableProviders, setConnection, setCurrentConfig, setCurrentProjectPath, setProviderAuthMethodsById, setServerContract, setServerProjects, setServerRootPath, setSessionStatuses, setSessions, setSettings, serverProjectsRef, connectionRef]);
 
   const runConnect = useCallback((targetSettings: OpencodeConnectionSettings) => {
     const inFlight = connectInFlightRef.current;
@@ -239,15 +254,25 @@ export function useConnectionConnectActions({
   const connect = useCallback(() => runConnect(settingsRef.current), [runConnect, settingsRef]);
 
   // A revoked or invalid credential on the data plane cannot heal by retrying.
-  // Cloud Link reuses its prepared credential/recovery path; manual servers ask
-  // the user to reconnect. Server-derived caches are cleared, project
-  // selection is not.
-  const handleStreamAuthFailure = useCallback((kind: ConnectionFailureKind) => {
-    if (settingsRef.current.connect) {
+  // Cloud Link reuses its prepared credential/recovery path; a Relay JWT is
+  // refreshed in place and the stream is rebuilt. Only when that refresh fails
+  // (or for a direct server) does the provider surface recovery. Returning
+  // true tells the realtime loop to reconnect with the fresh token.
+  const handleStreamAuthFailure = useCallback(async (kind: ConnectionFailureKind): Promise<boolean> => {
+    const current = settingsRef.current;
+    if (current.connect) {
       void connect().catch(() => undefined);
-      return;
+      return false;
     }
-    if (connectionRef.current.status === 'error' && connectionRef.current.kind === kind) return;
+    // Only 401 (`auth`) can be fixed by a new token; a 403/entitlement failure
+    // would loop forever because refreshing cannot change authorization.
+    if (current.relay && kind === 'auth') {
+      const result = await refreshRelayToken(current.relay.relayUrl, current.relay.account);
+      if (result.status === 'refreshed') return true;
+      dropRelayHost();
+      return false;
+    }
+    if (connectionRef.current.status === 'error' && connectionRef.current.kind === kind) return false;
     scopeGenerationRef.current += 1;
     serverGenerationRef.current += 1;
     clearProjectState();
@@ -260,7 +285,8 @@ export function useConnectionConnectActions({
         : 'Authentication failed. Check the credentials and reconnect.',
       checkedAt: Date.now(),
     });
-  }, [clearProjectState, connect, connectionRef, scopeGenerationRef, serverGenerationRef, setConnection, setSendingState, settingsRef]);
+    return false;
+  }, [clearProjectState, connect, connectionRef, dropRelayHost, scopeGenerationRef, serverGenerationRef, setConnection, setSendingState, settingsRef]);
 
   const updateSettings = useCallback((patch: Partial<OpencodeConnectionSettings>) => {
     const connectionChanged = (['serverUrl', 'username', 'password'] as const)
@@ -271,10 +297,12 @@ export function useConnectionConnectActions({
       setConnection({ status: 'idle', message: 'Connection settings changed. Reconnect to apply them.' });
       setActiveProjectPath(undefined);
       activeProjectPathRef.current = undefined;
-      clearProjectState();
-      setMessagesBySession({});
-      setDiffsBySession({});
-      setTodosBySession({});
+      // The target identity decides whether session-id-keyed caches survive:
+      // another server or relay host drops them, a credential change keeps them.
+      clearProjectState({
+        serverUrl: patch.serverUrl ?? settingsRef.current.serverUrl,
+        username: patch.username ?? settingsRef.current.username,
+      });
       serverProjectsRef.current = [];
       setServerProjects([]);
       setCurrentProjectPath(undefined);
@@ -286,7 +314,7 @@ export function useConnectionConnectActions({
       ...patch,
       connect: connectionChanged ? patch.connect : current.connect,
     }));
-  }, [activeProjectPathRef, clearProjectState, scopeGenerationRef, serverGenerationRef, serverProjectsRef, settingsRef, setActiveProjectPath, setConnection, setCurrentProjectPath, setDiagnostics, setDiffsBySession, setMessagesBySession, setServerRootPath, setServerProjects, setSettings, setTodosBySession]);
+  }, [activeProjectPathRef, clearProjectState, scopeGenerationRef, serverGenerationRef, serverProjectsRef, settingsRef, setActiveProjectPath, setConnection, setCurrentProjectPath, setDiagnostics, setServerRootPath, setServerProjects, setSettings]);
 
   const captureActiveProfilePreferences = useCallback(async () => {
     const identity = settingsRef.current;

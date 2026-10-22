@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "Iniciar sesión en Relay",
+    "subtitle": "Inicia sesión en tu Relay autohospedado para acceder a los ordenadores registrados en él.",
+    "relayUrl": "Dirección del Relay",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "Cuenta (correo electrónico)",
+    "password": "Contraseña",
+    "submit": "Iniciar sesión",
+    "advanced": "Opciones avanzadas",
+    "scan": "Escanear un código QR",
+    "manual": "Introducir la dirección del servidor manualmente",
+    "errors": {
+      "invalidRequest": "Comprueba la dirección del Relay, la cuenta y la contraseña.",
+      "invalidCredentials": "La cuenta o la contraseña son incorrectas.",
+      "unreachable": "No se pudo contactar con el Relay. Comprueba la dirección e inténtalo de nuevo.",
+      "rejected": "El Relay rechazó el inicio de sesión. Inténtalo más tarde.",
+      "invalidResponse": "El Relay devolvió una respuesta inesperada."
+    }
+  },
+  "hosts": {
+    "title": "Elige un ordenador",
+    "subtitle": "Estos ordenadores están registrados en tu Relay. Elige uno para conectarte.",
+    "online": "En línea",
+    "offline": "Sin conexión",
+    "lastSeen": "Última vez en línea {{time}}",
+    "neverSeen": "Aún no se ha visto",
+    "empty": "Aún no hay ordenadores. Ejecuta opencode-tunnel start en tu ordenador y luego desliza hacia abajo para actualizar.",
+    "refresh": "Actualizar",
+    "loadError": "No se pudo cargar la lista de ordenadores. Desliza hacia abajo para reintentar.",
+    "selectError": "No se pudo abrir este ordenador. Comprueba la conexión e inténtalo de nuevo."
+  },
+  "chooser": {
+    "relay": "Usar un Relay autohospedado",
+    "relayHint": "Inicia sesión en tu propio servidor Relay para acceder a tus ordenadores.",
+    "advanced": "Opciones avanzadas"
+  },
+  "unlock": {
+    "title": "Desbloquear {{name}}",
+    "body": "Este ordenador usa cifrado de extremo a extremo. Introduce la frase de contraseña configurada en él para continuar.",
+    "passphrase": "Frase de contraseña",
+    "submit": "Desbloquear y conectar",
+    "badPassphrase": "La frase de contraseña es incorrecta. Inténtalo de nuevo.",
+    "unavailable": "No se pudo contactar con el Relay. Compruébalo e inténtalo de nuevo."
+  }
+}

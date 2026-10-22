@@ -9,7 +9,6 @@ import {
   type ServerContract,
 } from '@/lib/opencode/client';
 import { getConnectionScope } from '@/lib/connection-scope';
-import type { SessionMessageRecord } from '@/lib/opencode/format';
 import { getConnectControlPlanes } from '@/lib/connect';
 import type {
   Command,
@@ -21,7 +20,6 @@ import type {
   Project,
   Session,
   SessionStatus,
-  Todo,
   VcsInfo,
 } from '@/lib/opencode/types';
 import type { AgentOption, ModelOption } from '@/providers/opencode-model-selection';
@@ -37,6 +35,7 @@ import type {
   ProjectPathsByConnection,
 } from '@/providers/opencode-provider-types';
 import type { Diagnostics } from '@/providers/services/diagnostics-service';
+import { useSessionScopeCaches } from '@/providers/session-scope-cache';
 
 export function useOpencodeProviderState(initial?: { settings: OpencodeConnectionSettings; projectPath?: string }) {
   const [settings, setSettings] = useState<OpencodeConnectionSettings>(initial?.settings ?? defaultConnectionSettings);
@@ -53,12 +52,17 @@ export function useOpencodeProviderState(initial?: { settings: OpencodeConnectio
   const [archivedSessions, setArchivedSessions] = useState<GlobalSession[]>([]);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>({});
   const [currentSessionId, setCurrentSessionId] = useState<string>();
-  const [messagesBySession, setMessagesBySession] = useState<Record<string, SessionMessageRecord[]>>({});
-  const [diffsBySession, setDiffsBySession] = useState<Record<string, FileDiff[]>>({});
+  // Session-id-keyed caches are owned by a scope-aware hook so a relay host
+  // switch cannot resolve an id from the previous host against the new one.
+  const {
+    messagesBySession, setMessagesBySession,
+    diffsBySession, setDiffsBySession,
+    todosBySession, setTodosBySession,
+    clearSessionCaches, sessionScopeRef,
+  } = useSessionScopeCaches(initial?.settings ?? settings);
   const [vcsDiffsByScope, setVcsDiffsByScope] = useState<Record<'uncommitted' | 'branch', FileDiff[]>>({ uncommitted: [], branch: [] });
   const [diffScopeBySession, setDiffScopeBySession] = useState<Record<string, DiffScope>>({});
   const [selectedDiffMessageBySession, setSelectedDiffMessageBySession] = useState<Record<string, string | undefined>>({});
-  const [todosBySession, setTodosBySession] = useState<Record<string, Todo[]>>({});
   const [pendingPermissionsBySession, setPendingPermissionsBySession] = useState<Record<string, PendingPermissionRequest[]>>({});
   const [pendingQuestionsBySession, setPendingQuestionsBySession] = useState<Record<string, PendingQuestionRequest[]>>({});
   const [mcpAuthPrompt, setMcpAuthPrompt] = useState<{ mcpName: string; url: string }>();
@@ -150,6 +154,7 @@ export function useOpencodeProviderState(initial?: { settings: OpencodeConnectio
     currentSessionId, setCurrentSessionId,
     messagesBySession, setMessagesBySession,
     diffsBySession, setDiffsBySession,
+    clearSessionCaches, sessionScopeRef,
     vcsDiffsByScope, setVcsDiffsByScope,
     diffScopeBySession, setDiffScopeBySession,
     selectedDiffMessageBySession, setSelectedDiffMessageBySession,

@@ -7,6 +7,7 @@ import { parseWorkspaces, WORKSPACES_STORAGE_KEY } from '@/providers/workspace-s
 import { getConnectionPassword } from '@/lib/connection-password';
 import { getConnectCredentialError, getConnectTestSecret, parseConnectMetadata, setConnectTestSecret, type ConnectMetadata } from '@/lib/connect';
 import { getConnectionScope, type ConnectionIdentity } from '@/lib/connection-scope';
+import { parseRelayAuth, type RelayAuth } from '@/lib/relay/types';
 import { CONNECTION_PROFILES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/storage-keys';
 import type { ChatPreferences } from '@/providers/opencode-preferences';
 import { isValidServerUrl, stripServerUrlCredentials } from '@/lib/opencode/client/url';
@@ -24,6 +25,9 @@ export type ConnectionProfile = {
   serverUrl: string;
   username: string;
   connect?: ConnectMetadata;
+  // Relay login metadata. Profiles written before Relay existed omit it and are
+  // read back as direct connections.
+  relay?: RelayAuth;
   // Partial because older writes may not carry every field; unknown fields are
   // ignored and each present field is validated before it is applied.
   modelPreferences?: Partial<ProfileModelPreferences>;
@@ -74,13 +78,16 @@ function toStringRecordOrNull(value: unknown): Record<string, string> | undefine
 export function toConnectionProfile(value: unknown): ConnectionProfile | undefined {
   if (!isRecord(value)) return undefined;
 
-  const { id, name, serverUrl, username, modelPreferences, connect } = value;
+  const { id, name, serverUrl, username, modelPreferences, connect, relay } = value;
   if (typeof id !== 'string' || !id.trim()) return undefined;
   if (typeof name !== 'string' || !name.trim()) return undefined;
   if (typeof serverUrl !== 'string' || !serverUrl.trim()) return undefined;
   if (typeof username !== 'string') return undefined;
   const parsedConnect = connect === undefined ? undefined : parseConnectMetadata(connect);
   if (connect !== undefined && (!parsedConnect || parsedConnect.deviceId !== username.trim())) return undefined;
+  // A malformed relay block only drops that field; the profile stays usable as
+  // a direct connection (matching how pre-relay profiles are read).
+  const parsedRelay = relay === undefined ? undefined : parseRelayAuth(relay);
 
   let parsedPreferences: Partial<ProfileModelPreferences> | undefined;
   if (modelPreferences !== undefined && modelPreferences !== null) {
@@ -107,6 +114,7 @@ export function toConnectionProfile(value: unknown): ConnectionProfile | undefin
     serverUrl: stripServerUrlCredentials(serverUrl),
     username: username.trim(),
     ...(parsedConnect ? { connect: parsedConnect } : {}),
+    ...(parsedRelay ? { relay: parsedRelay } : {}),
     ...(parsedPreferences ? { modelPreferences: parsedPreferences } : {}),
   };
 }

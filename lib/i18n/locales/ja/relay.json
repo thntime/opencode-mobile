@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "Relay にサインイン",
+    "subtitle": "セルフホストの Relay にサインインして、登録されているコンピューターに接続します。",
+    "relayUrl": "Relay アドレス",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "アカウント（メール）",
+    "password": "パスワード",
+    "submit": "サインイン",
+    "advanced": "詳細オプション",
+    "scan": "QR コードをスキャン",
+    "manual": "サーバーアドレスを手動で入力",
+    "errors": {
+      "invalidRequest": "Relay アドレス、アカウント、パスワードを確認してください。",
+      "invalidCredentials": "アカウントまたはパスワードが正しくありません。",
+      "unreachable": "Relay に接続できませんでした。アドレスを確認して再試行してください。",
+      "rejected": "Relay がサインインを拒否しました。しばらくしてから再試行してください。",
+      "invalidResponse": "Relay から予期しない応答が返されました。"
+    }
+  },
+  "hosts": {
+    "title": "コンピューターを選択",
+    "subtitle": "これらのコンピューターはあなたの Relay に登録されています。接続するものを選んでください。",
+    "online": "オンライン",
+    "offline": "オフライン",
+    "lastSeen": "最終オンライン {{time}}",
+    "neverSeen": "まだ接続されていません",
+    "empty": "まだコンピューターがありません。コンピューターで opencode-tunnel start を実行してから、下に引っ張って更新してください。",
+    "refresh": "更新",
+    "loadError": "コンピューター一覧を読み込めませんでした。下に引っ張って再試行してください。",
+    "selectError": "このコンピューターを開けませんでした。接続を確認して再試行してください。"
+  },
+  "chooser": {
+    "relay": "セルフホストの Relay を使う",
+    "relayHint": "自分の Relay サーバーにサインインしてコンピューターに接続します。",
+    "advanced": "詳細オプション"
+  },
+  "unlock": {
+    "title": "{{name}} のロックを解除",
+    "body": "このコンピューターはエンドツーエンド暗号化されています。続行するにはコンピューターで設定したパスフレーズを入力してください。",
+    "passphrase": "パスフレーズ",
+    "submit": "ロック解除して接続",
+    "badPassphrase": "パスフレーズが正しくありません。もう一度お試しください。",
+    "unavailable": "Relay に接続できませんでした。確認して再試行してください。"
+  }
+}

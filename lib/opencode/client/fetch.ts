@@ -3,11 +3,23 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import { recordBytes, recordRequest } from '../data-usage';
 import { getConnectCredentialError } from '@/lib/connect';
+import { decryptRelayResponse, encryptRelayRequest, relayHostKeyFor } from '@/lib/relay/fetch-e2e';
+import { RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayTokenExpiryHint } from '@/lib/relay/refresh';
+import { cachedRelayToken } from '@/lib/relay/token-cache';
 import { joinUrlPath } from './url';
 import type { OpencodeConnectionSettings } from './types';
+import type { RelayAuth } from '@/lib/relay/types';
 import { fetchWithReadDeadline } from './read-deadline';
 
 export function createAuthHeader(settings: OpencodeConnectionSettings) {
+  // Relay connections authenticate with the account JWT, never the host's
+  // Basic credential. The token is cached by the auth module; `fetchConnection`
+  // hydrates it before every relay request on a cold start.
+  if (settings.relay) {
+    const token = cachedRelayToken();
+    return token ? `Bearer ${token}` : undefined;
+  }
+
   const password = settings.password;
   if (!password) {
     return undefined;
@@ -27,21 +39,85 @@ export function getRequestHeaders(settings: OpencodeConnectionSettings) {
     : undefined;
 }
 
+// Relay tokens live in SecureStore, so the request path (not the sync header
+// builder) resolves them. The dynamic import keeps the native keychain module
+// out of callers that never use a relay connection.
+function withAuthorization(init: RequestInit | undefined, token: string | undefined): RequestInit | undefined {
+  if (!token) return init;
+  const headers = new Headers(init?.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  return { ...init, headers };
+}
+
+// D4: refresh inside the five-minute window before the request leaves. When the
+// Relay has no password in memory the refresh returns `needs_reauth` without a
+// network round-trip, and the original request is not sent.
+async function relayRequestInit(relay: RelayAuth, init?: RequestInit): Promise<RequestInit | undefined> {
+  const { decodeTokenExpiry, getRelayToken, isRelayTokenExpiring } = await import('@/lib/relay/auth');
+  const token = await getRelayToken();
+  if (!token) return init;
+  const expiresAt = decodeTokenExpiry(token) ?? relayTokenExpiryHint(token, relay.tokenExpiresAt);
+  if (!isRelayTokenExpiring(expiresAt)) return withAuthorization(init, token);
+  const result = await refreshRelayToken(relay.relayUrl, relay.account);
+  if (result.status !== 'refreshed') throw new RelayReauthRequiredError(result.reason);
+  return withAuthorization(init, result.token);
+}
+
+// Replays the already-prepared init so an encrypted body (a base64 string
+// produced once by `encryptRelayRequest`) is reused verbatim instead of being
+// encrypted a second time. Streams and other one-shot bodies cannot be replayed.
+function isReplayableInit(init?: RequestInit) {
+  const body = init?.body;
+  if (body === undefined || body === null) return true;
+  if (typeof body === 'string' || body instanceof URLSearchParams || body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return true;
+  return typeof Blob !== 'undefined' && body instanceof Blob;
+}
+
+async function replayRelayInit(relay: RelayAuth, init?: RequestInit): Promise<RequestInit | undefined> {
+  const result = await refreshRelayToken(relay.relayUrl, relay.account);
+  if (result.status !== 'refreshed') throw new RelayReauthRequiredError(result.reason);
+  if (!isReplayableInit(init)) return undefined;
+  return withAuthorization(init, result.token);
+}
+
 export async function fetchConnection(input: RequestInfo | URL, init?: RequestInit, settings?: OpencodeConnectionSettings) {
   if (settings?.connect) {
     const error = getConnectCredentialError(settings.connect, settings.password);
     if (error) throw new Error(error);
   }
+  const requestInit = settings?.relay ? await relayRequestInit(settings.relay, init) : init;
+  // E2E is opt-in per host: the key only exists after the user unlocked it, so
+  // a missing key keeps the direct-connection behavior untouched.
+  const hostKey = relayHostKeyFor(settings);
+  const preparedInit = hostKey ? await encryptRelayRequest(requestInit, hostKey) : requestInit;
   // RN's XHR ignores redirect rejection. Use Expo for Cloud Link and one-use
   // local pairing requests; other manual connections retain their transport.
-  const transport = settings?.connect || init?.redirect === 'error'
+  const transport = settings?.connect || preparedInit?.redirect === 'error'
     ? (input: RequestInfo | URL, init?: RequestInit) => expoFetch(input, { ...init, redirect: 'error' })
     : fetch;
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-  const method = init?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET');
+  const method = preparedInit?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET');
   const finiteRead = /^(GET|HEAD)$/i.test(method) && !/\/event\/?(?:\?|$)/.test(url);
-  const response = finiteRead ? await fetchWithReadDeadline(transport, input, init) : await transport(input, init);
+  const send = (nextInit: RequestInit | undefined) => finiteRead
+    ? fetchWithReadDeadline(transport, input, nextInit)
+    : transport(input, nextInit);
+  let received = await send(preparedInit);
   recordRequest();
+  if (settings?.relay && received.status === 401) {
+    // One refresh and one replay. A second 401 means the fresh token is also
+    // rejected, so the session is unrecoverable in place.
+    const replayInit = await replayRelayInit(settings.relay, preparedInit);
+    if (!replayInit) {
+      throw new Error('The Relay session was refreshed, but this request body cannot be replayed. Retry the request.');
+    }
+    received = await send(replayInit);
+    recordRequest();
+    if (received.status === 401) {
+      await clearRelaySession();
+      throw new RelayReauthRequiredError('rejected', true);
+    }
+  }
+  const response = hostKey ? await decryptRelayResponse(received, hostKey) : received;
   measureResponseBytes(response);
   if (settings?.connect && response.status === 401) throw new Error('Cloud Link credentials were rejected. Pair this device again.');
   if (settings?.connect && response.status === 403) throw new Error('Cloud Link access was denied (403). Check your subscription or device credentials.');

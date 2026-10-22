@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { buildPtyWebSocketUrl, type OpencodeConnectionSettings, type ServerContract } from '@/lib/opencode/client';
 import { toShellView } from '@/lib/opencode/v2/shared';
 import * as v1 from '@/lib/opencode/compat/v1/terminal';
+import { withRelayEncryption } from '@/lib/relay/ws';
 const location = (client: ScopedOpencodeClient) => ({ location: { directory: client.__opencode.directory } });
 export async function listShells(client: ScopedOpencodeClient) {
   return client.compatibility ? v1.listShells(client.compatibility) : (await client.api!.config.shells()).map(toShellView);
@@ -24,7 +25,7 @@ export async function createTerminalConnectToken(client: ScopedOpencodeClient, p
 }
 export function getTerminalWebSocketUrl(settings: Pick<OpencodeConnectionSettings, 'serverUrl' | 'directory'>, ptyId: string, options?: { ticket?: string; cursor?: string }, contract?: ServerContract) { return buildPtyWebSocketUrl(settings, ptyId, options, contract); }
 export function openTerminalWebSocket(url: string, authorization?: string) {
-  if (Platform.OS === 'web') return new WebSocket(url);
+  if (Platform.OS === 'web') return withRelayEncryption(new WebSocket(url), url);
   const NativeSocket = WebSocket as unknown as { new(url: string, protocols: undefined, options: { headers: Record<string, string> }): WebSocket };
-  return new NativeSocket(url, undefined, { headers: authorization ? { Authorization: authorization } : {} });
+  return withRelayEncryption(new NativeSocket(url, undefined, { headers: authorization ? { Authorization: authorization } : {} }), url);
 }

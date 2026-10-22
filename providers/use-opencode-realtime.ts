@@ -12,7 +12,7 @@ type RealtimeActions = {
   onEvent: (event: OpencodeEvent) => void;
   onGlobalEvent?: (event: OpencodeEvent) => void;
   refreshNativeSurfaces?: (full?: boolean) => Promise<unknown>;
-  onFatalError?: (kind: ConnectionFailureKind) => void;
+  onFatalError?: (kind: ConnectionFailureKind) => boolean | void | Promise<boolean | void>;
   refreshSessions: (silent: boolean) => Promise<unknown>;
   refreshPendingInteractions: () => Promise<unknown>;
   refreshMessages: (sessionId: string, silent: boolean, options?: { mode?: TranscriptRefreshMode }) => Promise<unknown>;
@@ -31,7 +31,7 @@ export function shouldPoll(streamConnected: boolean, busy: boolean) {
 export { SSE_STALENESS_MS, SSE_FOREGROUND_CYCLE_MS } from '@/providers/realtime-timing';
 
 export function useOpencodeRealtime({ catalogClient, activeProjectPath, connected, busy,
-  currentSessionId, conversationSessionId, pendingSessionIds = [], subscribe: subscribeStream = subscribeEvents, ...actions
+  currentSessionId, conversationSessionId, pendingSessionIds = [], connectionScope, subscribe: subscribeStream = subscribeEvents, ...actions
 }: RealtimeActions & {
   catalogClient: ScopedOpencodeClient;
   activeProjectPath?: string;
@@ -40,6 +40,7 @@ export function useOpencodeRealtime({ catalogClient, activeProjectPath, connecte
   pendingSessionIds?: string[];
   currentSessionId?: string;
   conversationSessionId?: string;
+  connectionScope?: string;
 }) {
   const [eventStreamStatus, setEventStreamStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const statusRef = useRef(eventStreamStatus);
@@ -50,6 +51,16 @@ export function useOpencodeRealtime({ catalogClient, activeProjectPath, connecte
   });
   const inFlight = useRef<Promise<unknown> | undefined>(undefined);
   const pendingFull = useRef(false);
+  // Another host must not inherit this host's stream status or an in-flight
+  // reconcile pass; the subscription below reopens against the new client.
+  const scopeRef = useRef(connectionScope);
+  useLayoutEffect(() => {
+    if (scopeRef.current === connectionScope) return;
+    scopeRef.current = connectionScope;
+    inFlight.current = undefined;
+    pendingFull.current = false;
+    setEventStreamStatus('idle');
+  }, [connectionScope]);
   const reconcile = useCallback(function reconcile(full = false): Promise<unknown> {
     if (inFlight.current) {
       // A reconnect's authoritative rebuild must not be swallowed by a poll
@@ -137,11 +148,16 @@ export function useOpencodeRealtime({ catalogClient, activeProjectPath, connecte
         }
         const failureKind = classifyConnectionFailure(streamError ?? new Error('OpenCode event stream ended.'));
         if (isAuthConnectionFailure(failureKind)) {
-          // Revoked or invalid credentials cannot heal by reconnecting. Stop the
-          // loop and let the provider surface recovery; a client/settings change
-          // re-runs this effect.
+          // A relay JWT can be refreshed and the stream rebuilt in place. The
+          // provider returns true when recovery succeeded; direct and Cloud Link
+          // connections keep the old "stop and surface recovery" contract.
           setEventStreamStatus('error');
-          latest.current.onFatalError?.(failureKind);
+          const recovered = await latest.current.onFatalError?.(failureKind);
+          if (controller.signal.aborted) break;
+          if (recovered) {
+            retryDelay = 1000;
+            continue;
+          }
           break;
         }
         setEventStreamStatus('error');

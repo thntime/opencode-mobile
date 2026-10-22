@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 
+import type { ConnectionIdentity } from '@/lib/connection-scope';
 import type {
   OpencodeConnectionSettings,
   PendingPermissionRequest,
@@ -145,7 +146,7 @@ export type ConnectionActionsInput = {
   activeProjectPathRef: { current: string | undefined };
   projectPathsByConnectionRef: { current: ProjectPathsByConnection };
   connectionScopeRef: { current: string };
-  clearProjectState: () => void;
+  clearProjectState: (next?: ConnectionIdentity) => void;
   softResetProjectState: () => void;
   isHydrated: boolean;
   isCurrentCatalogClient: (candidate: object) => boolean;

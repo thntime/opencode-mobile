@@ -87,8 +87,10 @@ describe('persistence hydration and write-back', () => {
     }
     const preferences = await loadTs('providers/opencode-preferences.ts');
     const profileUrls = await loadTs('lib/opencode/client/url.ts', { './types': { defaultConnectionSettings: { serverUrl: 'http://localhost' } } });
+    const relayTypes = await loadTs('lib/relay/types.ts');
     const { parseConnectionSettings, parseChatPreferences } = await loadTs('providers/persisted-preferences.ts', {
       '@/lib/connect': connect, '@/providers/opencode-preferences': preferences, '@/lib/opencode/client/url': profileUrls,
+      '@/lib/relay/types': relayTypes,
     });
     assert.throws(() => parseConnectionSettings('{"serverUrl":123}'), /Invalid/);
     assert.equal(parseConnectionSettings('{"serverUrl":"https://alice:secret@host.test/proxy","username":"configured"}').serverUrl, 'https://host.test/proxy');

@@ -3,10 +3,16 @@ import { subscribeEvents, type OpencodeEvent } from '@/lib/opencode/events';
 import type { ScopedOpencodeClient } from '@/lib/opencode/client';
 
 type Listener = { queue: OpencodeEvent[]; wake: () => void; heartbeat: () => void; error?: unknown; ended: boolean };
+type Stream = { controller: AbortController; listeners: Set<Listener>; last?: OpencodeEvent };
+export type SharedEventStream = ((client: ScopedOpencodeClient, signal: AbortSignal, heartbeat?: () => void) => AsyncGenerator<OpencodeEvent>) & {
+  /** Drops the transport and its buffered envelope, e.g. when the runtime is
+   *  pointed at another host and must not replay the previous host's events. */
+  reset: () => void;
+};
 // A server has one transport even when several retained projects consume events.
-export function createSharedEventStream(source = subscribeEvents) {
-  let stream: { controller: AbortController; listeners: Set<Listener>; last?: OpencodeEvent } | undefined;
-  return async function* subscribe(client: ScopedOpencodeClient, signal: AbortSignal, heartbeat: () => void = () => {}) {
+export function createSharedEventStream(source = subscribeEvents): SharedEventStream {
+  let stream: Stream | undefined;
+  const subscribe = async function* subscribe(client: ScopedOpencodeClient, signal: AbortSignal, heartbeat: () => void = () => {}) {
     if (signal.aborted) return;
     const owned = stream ?? { controller: new AbortController(), listeners: new Set<Listener>() };
     const listener: Listener = { queue: owned.last ? [owned.last] : [], wake: () => {}, heartbeat, ended: false };
@@ -56,4 +62,20 @@ export function createSharedEventStream(source = subscribeEvents) {
       if (!owned.listeners.size) { owned.controller.abort(); if (stream === owned) stream = undefined; }
     }
   };
+  // Abort and forget the current transport before a new connection subscribes.
+  // Listeners are detached without an error so consumers just end and let the
+  // reconnect path open the new host's stream.
+  const reset = () => {
+    const owned = stream;
+    stream = undefined;
+    if (!owned) return;
+    owned.controller.abort();
+    for (const listener of owned.listeners) {
+      listener.queue.length = 0;
+      listener.error = undefined;
+      listener.ended = true;
+      listener.wake();
+    }
+  };
+  return Object.assign(subscribe, { reset });
 }

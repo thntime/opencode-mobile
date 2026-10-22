@@ -4,6 +4,7 @@ import type { V2Context } from '../v2/shared';
 import Constants from 'expo-constants';
 
 import type { ConnectMetadata } from '@/lib/connect';
+import type { RelayAuth } from '@/lib/relay/types';
 import type { ProviderAuthValues } from '@/lib/opencode/types';
 import type { PromptInboxApi } from '@/lib/opencode/prompt-inbox';
 
@@ -71,6 +72,9 @@ export type OpencodeConnectionSettings = {
   password: string;
   directory: string;
   connect?: ConnectMetadata;
+  // Present when the connection goes through a self-hosted Relay. `serverUrl`
+  // then carries the `/relay/{hostId}` prefix and the token lives in SecureStore.
+  relay?: RelayAuth;
 };
 
 export const defaultConnectionSettings: OpencodeConnectionSettings = {

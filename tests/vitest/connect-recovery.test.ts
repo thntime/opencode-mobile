@@ -48,6 +48,7 @@ async function fixture({ expired = false, missing = false, storedSession = true,
     'expo-crypto': { randomUUID: (() => { let n = 0; return () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`; })() },
     'react-native': native, '@/lib/connect': connect, '@/lib/connection-scope': scope,
     '@/lib/connection-password': { getConnectionPassword: async () => '' }, '@/lib/storage-keys': keys,
+    '@/lib/relay/types': { parseRelayAuth: () => undefined },
     '@/lib/opencode/client/url': await loadTs('lib/opencode/client/url.ts', { './types': { defaultConnectionSettings: { serverUrl: 'http://localhost' } } }),
   }, globals);
   const profile = await profiles.saveConnectProfile(CP, claim);
@@ -67,6 +68,7 @@ async function fixture({ expired = false, missing = false, storedSession = true,
     '@/lib/connect-install': { isConnectStoreInstall: async () => true },
     '@/lib/connect-store': store, '@/lib/connection-profiles': profiles, '@/lib/connection-scope': scope,
     '@/providers/connection-refresh': { migrateConnectConnectionScope: async () => {} },
+    '@/lib/relay/refresh': { isRelayReauthRequired: () => false, refreshRelayToken: async () => ({ status: 'needs_reauth' }), relayWithoutHost: (relay) => ({ relayUrl: relay.relayUrl, account: relay.account }) },
   };
   const subscription = await loadTs('providers/services/connect-subscription-service.ts', imports, globals);
   imports['@/providers/services/connect-subscription-service'] = subscription;

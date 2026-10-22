@@ -3,7 +3,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { getConnectCredentialError } from '@/lib/connect';
 
 import { createAuthHeader } from './fetch';
-import { normalizeServerUrl } from './url';
+import { joinUrlPath, normalizeServerUrl } from './url';
 import type { OpencodeConnectionSettings } from './types';
 
 // Remote service management for a paired Cloud Link device. The connector
@@ -278,7 +278,7 @@ export class ServiceManagementError extends Error {
 function managementUrl(settings: OpencodeConnectionSettings, path: string) {
   const base = normalizeServerUrl(settings.serverUrl);
   if (!base.valid) throw new ServiceManagementError(0, 'Add a valid server URL before managing services.');
-  return new URL(`${MANAGEMENT_PREFIX}${path}`, base.origin).toString();
+  return new URL(joinUrlPath(base.pathPrefix, `${MANAGEMENT_PREFIX}${path}`), base.origin).toString();
 }
 
 async function readBody(response: Response): Promise<unknown> {
@@ -306,6 +306,11 @@ async function managementRequest(
   path: string,
   init: RequestInit,
 ): Promise<{ status: number; value?: unknown; connectorVersion?: string }> {
+  // The connector's management surface only exists on a Cloud Link machine. A
+  // Relay connection has no such endpoint behind `/relay/{hostId}`.
+  if (settings.relay) {
+    throw new ServiceManagementError(0, 'Service management is not available for Relay connections.');
+  }
   if (!settings.connect) {
     throw new ServiceManagementError(0, 'Service management is only available for Cloud Link connections.');
   }

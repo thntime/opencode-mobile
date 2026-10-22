@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname } from 'expo-router';
+import { DarkTheme, DefaultTheme, Redirect, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -16,7 +16,10 @@ import { useQuickActionRoute } from '@/hooks/use-quick-action-route';
 import { installGlobalErrorHandler } from '@/lib/error-reporting';
 import '@/lib/i18n';
 import { isConnectEnabled } from '@/lib/connect';
-import { useOnboarding, useUpdates } from '@/providers/opencode-contexts';
+import { getRelayToken } from '@/lib/relay/auth';
+import { relayRouteTarget } from '@/lib/relay/guard';
+import type { RelayAuth } from '@/lib/relay/types';
+import { useConnection, useOnboarding, useUpdates } from '@/providers/opencode-contexts';
 import { UpdateNotice } from '@/components/ui/update-notice';
 import { OpencodeProvider } from '@/providers/opencode-provider';
 
@@ -86,9 +89,30 @@ function UpdateHost() {
 function RootNavigator() {
   const colorScheme = useColorScheme();
   const palette = Colors[colorScheme ?? 'light'];
+  const pathname = usePathname();
   const { isHydrated, onboardingCompleted, onboardingActive } = useOnboarding();
+  const { settings } = useConnection();
   useNotificationRoute();
   useQuickActionRoute(isHydrated);
+
+  // Relay routing guard. The token lives in SecureStore, so its presence is
+  // resolved asynchronously once a `relay` block exists; `undefined` keeps the
+  // guard undecided instead of flashing the login route on cold starts.
+  const relay = settings.relay;
+  const [tokenCheck, setTokenCheck] = useState<{ relay: RelayAuth; hasToken: boolean }>();
+  // Render-phase reset (React docs pattern) keeps the check tied to the relay
+  // block it belongs to without a setState-in-effect.
+  if (tokenCheck && tokenCheck.relay !== relay) setTokenCheck(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    if (!relay) return;
+    const current = relay;
+    void getRelayToken()
+      .then((token) => { if (!cancelled) setTokenCheck({ relay: current, hasToken: Boolean(token) }); })
+      .catch(() => { if (!cancelled) setTokenCheck({ relay: current, hasToken: false }); });
+    return () => { cancelled = true; };
+  }, [relay]);
+  const hasRelayToken = relay && tokenCheck?.relay === relay ? tokenCheck.hasToken : undefined;
 
   useEffect(() => {
     if (isHydrated) {
@@ -105,22 +129,32 @@ function RootNavigator() {
   }
 
   const onboardingVisible = !onboardingCompleted || onboardingActive;
+  // Direct connections have no `relay` block and are never redirected; during
+  // onboarding the connect step drives relay navigation explicitly.
+  const relayTarget = onboardingCompleted && relay && hasRelayToken !== undefined
+    ? relayRouteTarget(relay, hasRelayToken)
+    : undefined;
 
   return (
-    <Stack>
-      <Stack.Protected guard={onboardingCompleted}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="session/[id]" options={{ headerShown: false }} />
-      </Stack.Protected>
-      <Stack.Protected guard={onboardingVisible}>
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      </Stack.Protected>
-      <Stack.Protected guard={isConnectEnabled()}>
-        <Stack.Screen name="pair" options={{ headerShown: false }} />
-        <Stack.Screen name="service" options={{ headerShown: false }} />
-      </Stack.Protected>
-      <Stack.Screen name="share" options={{ headerShown: false }} />
-    </Stack>
+    <>
+      {relayTarget && pathname !== relayTarget ? <Redirect href={relayTarget} /> : null}
+      <Stack>
+        <Stack.Protected guard={onboardingCompleted}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="session/[id]" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={onboardingVisible}>
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={isConnectEnabled()}>
+          <Stack.Screen name="pair" options={{ headerShown: false }} />
+          <Stack.Screen name="service" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Screen name="relay-login" options={{ headerShown: false }} />
+        <Stack.Screen name="relay-hosts" options={{ headerShown: false }} />
+        <Stack.Screen name="share" options={{ headerShown: false }} />
+      </Stack>
+    </>
   );
 }
 

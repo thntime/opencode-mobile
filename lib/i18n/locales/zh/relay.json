@@ -1,0 +1,46 @@
+{
+  "login": {
+    "title": "登录 Relay",
+    "subtitle": "登录你的自建 Relay，连接注册到它下面的电脑。",
+    "relayUrl": "Relay 地址",
+    "relayUrlPlaceholder": "https://relay.example.com",
+    "account": "账号（邮箱）",
+    "password": "密码",
+    "submit": "登录",
+    "advanced": "高级选项",
+    "scan": "扫描二维码",
+    "manual": "手动填写服务器地址",
+    "errors": {
+      "invalidRequest": "请检查 Relay 地址、账号和密码。",
+      "invalidCredentials": "账号或密码不正确。",
+      "unreachable": "无法连接到 Relay，请检查地址后重试。",
+      "rejected": "Relay 拒绝了登录请求，请稍后重试。",
+      "invalidResponse": "Relay 返回了无法识别的响应。"
+    }
+  },
+  "hosts": {
+    "title": "选择一台电脑",
+    "subtitle": "这些电脑已注册到你的 Relay，选择一台进行连接。",
+    "online": "在线",
+    "offline": "离线",
+    "lastSeen": "最后在线 {{time}}",
+    "neverSeen": "尚未上线过",
+    "empty": "还没有电脑。在电脑上运行 opencode-tunnel start，然后下拉刷新。",
+    "refresh": "刷新",
+    "loadError": "无法加载电脑列表，请下拉重试。",
+    "selectError": "无法打开这台电脑，请检查连接后重试。"
+  },
+  "chooser": {
+    "relay": "使用自建 Relay",
+    "relayHint": "登录你自己的 Relay 服务器，连接你的电脑。",
+    "advanced": "高级选项"
+  },
+  "unlock": {
+    "title": "解锁 {{name}}",
+    "body": "这台电脑启用了端到端加密。输入你在电脑上设置的口令以继续。",
+    "passphrase": "口令",
+    "submit": "解锁并连接",
+    "badPassphrase": "口令错误，请重试。",
+    "unavailable": "无法连接到 Relay，请检查后重试。"
+  }
+}

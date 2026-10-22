@@ -8,7 +8,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { CONNECT_LEARN_MORE_URL } from '@/lib/connect';
 import { useConnection } from '@/providers/opencode-contexts';
 
-export function ConnectionMethodChooser({ onScan, onManual, onPair }: { onScan: () => void; onManual: () => void; onPair: () => void }) {
+export function ConnectionMethodChooser({ onScan, onManual, onPair, onRelay }: { onScan: () => void; onManual: () => void; onPair: () => void; onRelay?: () => void }) {
   const { t } = useTranslation();
   const palette = Colors[useColorScheme() ?? 'light'];
   const choiceStyle = { minHeight: 96, borderRadius: 16, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface };
@@ -20,6 +20,7 @@ export function ConnectionMethodChooser({ onScan, onManual, onPair }: { onScan: 
     <List.Item accessibilityRole="button" style={choiceStyle} titleStyle={titleStyle} descriptionStyle={descriptionStyle} testID="connection-method-scan" title={t('settings:connect.scanLocal')} description={t('settings:connect.scanLocalHint')} left={(props) => <List.Icon {...props} icon="qrcode-scan" color={palette.tint} />} right={(props) => <List.Icon {...props} icon="chevron-right" color={palette.muted} />} onPress={onScan} disabled={!scanAvailable} accessibilityState={{ disabled: !scanAvailable }} />
     <List.Item accessibilityRole="button" style={choiceStyle} titleStyle={titleStyle} descriptionStyle={descriptionStyle} testID="connection-method-manual" title={t('settings:connect.manual')} description={t('settings:connect.manualHint')} left={(props) => <List.Icon {...props} icon="server" color={palette.tint} />} right={(props) => <List.Icon {...props} icon="chevron-right" color={palette.muted} />} onPress={onManual} />
     <List.Item accessibilityRole="button" style={choiceStyle} titleStyle={titleStyle} descriptionStyle={descriptionStyle} testID="connection-method-connect" title={t('settings:connect.entry')} description={t('settings:connect.scanHint')} left={(props) => <List.Icon {...props} icon="cloud-outline" color={palette.tint} />} right={(props) => <List.Icon {...props} icon="chevron-right" color={palette.muted} />} onPress={onPair} disabled={!connectSetup.enabled} accessibilityState={{ disabled: !connectSetup.enabled }} />
+    {onRelay ? <List.Item accessibilityRole="button" style={choiceStyle} titleStyle={titleStyle} descriptionStyle={descriptionStyle} testID="connection-method-relay" title={t('relay:chooser.relay')} description={t('relay:chooser.relayHint')} left={(props) => <List.Icon {...props} icon="router-network" color={palette.tint} />} right={(props) => <List.Icon {...props} icon="chevron-right" color={palette.muted} />} onPress={onRelay} /> : null}
     {!connectSetup.enabled ? <Text style={{ color: palette.muted }} variant="bodySmall">{t('settings:connect.nativeOnly')}</Text> : null}
     <Button testID="connect-learn-more" mode="text" icon="open-in-new" style={{ alignSelf: 'flex-start' }} onPress={() => void Linking.openURL(CONNECT_LEARN_MORE_URL).catch(() => undefined)}>{t('settings:connect.learnMore')}</Button>
   </View>;
