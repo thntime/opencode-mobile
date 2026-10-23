@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/zhangjinglei137/opencode-mobile/releases/latest/download/opencode-mobile.apk">
+  <a href="https://github.com/thntime/opencode-mobile/releases/latest/download/opencode-mobile.apk">
     <img src="https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-APK-18A748?style=for-the-badge&logo=android&logoColor=white" alt="下载 APK">
   </a>
   <a href="LICENSE">
@@ -29,7 +29,7 @@
 
 OpenCode Mobile 是一个独立的社区移动客户端，用来连接你自己运行的 [OpenCode](https://opencode.ai/) 服务器：在手机上发起任务、查看进度、审批权限、使用终端，并继续在电脑上没做完的会话。
 
-本仓库是 [alvarolorentedev/opencode-mobile](https://github.com/alvarolorentedev/opencode-mobile) 的个人分叉，由 [@zhangjinglei137](https://github.com/zhangjinglei137) 维护，主要面向自托管场景。
+本仓库是 [alvarolorentedev/opencode-mobile](https://github.com/alvarolorentedev/opencode-mobile) 的个人分叉，由 [@thntime](https://github.com/thntime) 维护，主要面向自托管场景。
 
 它不是把桌面 IDE 塞进小屏幕，而是围绕手机上真正需要做的事设计。
 
@@ -140,7 +140,7 @@ provider 密钥保存在所连接的 OpenCode 服务器上。在 OpenCode 2 上�
 
 从 GitHub Releases 下载最新 APK：
 
-[**下载最新 APK →**](https://github.com/zhangjinglei137/opencode-mobile/releases/latest/download/opencode-mobile.apk)
+[**下载最新 APK →**](https://github.com/thntime/opencode-mobile/releases/latest/download/opencode-mobile.apk)
 
 - 包名为 `app.getopencode.relay`，可与官方版共存。
 - 后续版本必须使用同一签名才能覆盖安装；升级时不要卸载旧版本。
@@ -199,7 +199,7 @@ npm run typecheck
 
 ## 贡献
 
-欢迎通过 [issue tracker](https://github.com/zhangjinglei137/opencode-mobile/issues) 提交 issue 与 pull request：
+欢迎通过 [issue tracker](https://github.com/thntime/opencode-mobile/issues) 提交 issue 与 pull request：
 
 - 报告 bug
 - 提出功能建议

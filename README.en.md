@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/zhangjinglei137/opencode-mobile/releases/latest/download/opencode-mobile.apk">
+  <a href="https://github.com/thntime/opencode-mobile/releases/latest/download/opencode-mobile.apk">
     <img src="https://img.shields.io/badge/Download-APK-18A748?style=for-the-badge&logo=android&logoColor=white" alt="Download APK">
   </a>
   <a href="LICENSE">
@@ -29,7 +29,7 @@
 
 OpenCode Mobile is an independent, community-built mobile client for the [OpenCode](https://opencode.ai/) server you already run. Start tasks, check progress, approve permissions, use the terminal, and continue sessions you left on your desk.
 
-This repository is a personal fork of [alvarolorentedev/opencode-mobile](https://github.com/alvarolorentedev/opencode-mobile), maintained by [@zhangjinglei137](https://github.com/zhangjinglei137) for self-hosted use.
+This repository is a personal fork of [alvarolorentedev/opencode-mobile](https://github.com/alvarolorentedev/opencode-mobile), maintained by [@thntime](https://github.com/thntime) for self-hosted use.
 
 It is not an attempt to squeeze a desktop IDE onto a smaller screen. It is designed around the things that matter on mobile.
 
@@ -140,7 +140,7 @@ Provider keys are saved on the connected OpenCode server. On OpenCode 2, the ser
 
 Download the latest APK from GitHub Releases:
 
-[**Download latest APK →**](https://github.com/zhangjinglei137/opencode-mobile/releases/latest/download/opencode-mobile.apk)
+[**Download latest APK →**](https://github.com/thntime/opencode-mobile/releases/latest/download/opencode-mobile.apk)
 
 - Package name is `app.getopencode.relay`, so it can coexist with the official app.
 - Later versions must be signed with the same key to install over an existing copy; do not uninstall before upgrading.
@@ -199,7 +199,7 @@ Signing setup, release steps, and troubleshooting:
 
 ## Contributing
 
-Contributions are welcome through the [issue tracker](https://github.com/zhangjinglei137/opencode-mobile/issues) and pull requests:
+Contributions are welcome through the [issue tracker](https://github.com/thntime/opencode-mobile/issues) and pull requests:
 
 - opening bug reports
 - proposing features

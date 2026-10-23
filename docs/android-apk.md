@@ -80,7 +80,7 @@ gh run download <run-id>          # 得到 opencode-mobile-relay-<n>.apk
 
 固定下载地址（始终指向最新 Release）：
 
-<https://github.com/zhangjinglei137/opencode-mobile/releases/latest/download/opencode-mobile.apk>
+<https://github.com/thntime/opencode-mobile/releases/latest/download/opencode-mobile.apk>
 
 或用命令行：
 
