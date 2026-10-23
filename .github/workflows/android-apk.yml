@@ -84,6 +84,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 发布 tag 必须与 app.config.ts 的 version 一致，避免把错版本发到 Release。
+      - name: Validate tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -eo pipefail
+          APP_VERSION=$(npx expo config --type public --json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$APP_VERSION" != "$TAG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app version $APP_VERSION in app.config.ts"
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches app version $APP_VERSION"
+
       - name: Decode keystore
         shell: bash
         env:
@@ -135,7 +149,12 @@ jobs:
           set -eo pipefail
           PKG="${{ env.EXPO_ANDROID_PACKAGE }}"
           APK=android/app/build/outputs/apk/release/app-release.apk
-          OUT="opencode-mobile-${PKG##*.}-${GITHUB_RUN_NUMBER}.apk"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            # Release 资产使用固定名，README 依赖 releases/latest/download/opencode-mobile.apk。
+            OUT="opencode-mobile.apk"
+          else
+            OUT="opencode-mobile-${PKG##*.}-${GITHUB_RUN_NUMBER}.apk"
+          fi
           cp "$APK" "$OUT"
           echo "APK_NAME=$OUT" >> "$GITHUB_ENV"
           {
@@ -143,6 +162,7 @@ jobs:
             echo ""
             echo "- 包名：\`$PKG\`"
             echo "- ABI：\`${{ env.ANDROID_RELEASE_ABIS }}\`"
+            echo "- 版本：\`${{ github.ref_name }}\`"
             echo "- 提交：\`${GITHUB_SHA}\`"
             echo "- 大小：$(du -h "$OUT" | cut -f1)"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -168,4 +188,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ env.APK_NAME }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: opencode-mobile.apk

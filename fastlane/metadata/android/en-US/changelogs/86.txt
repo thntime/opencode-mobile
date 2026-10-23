@@ -1,0 +1,3 @@
+- Sign in to a self-hosted Relay server, pick a remote host, and unlock it with the host's end-to-end passphrase.
+- Relay connections now handle login, key unwrapping, and terminal sessions correctly on physical devices.
+- README is now available in Simplified Chinese by default, with an English translation.
