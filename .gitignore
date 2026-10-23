@@ -75,3 +75,5 @@ service-account*.json
 apple-ci/
 output/
 .playwright-cli/
+# Gradle build outputs inside native modules
+modules/*/android/build/
