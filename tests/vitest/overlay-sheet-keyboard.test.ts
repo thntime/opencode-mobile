@@ -90,16 +90,17 @@ describe('OverlaySheet keyboard avoidance', () => {
   });
 
   it('caps the compact padding by the available height instead of a fixed ratio', () => {
-    window.height = 800;
-    expect(flatten(frame('android', { compact: true }).props.style).paddingTop).toBeLessThan(window.height);
-    expect(flatten(frame('ios', { compact: true }).props.style).paddingTop).toBeLessThan(window.height);
-
-    // A keyboard-shrunk window must not reserve 45% of the original height:
-    // the sheet keeps at least 160px of usable space.
-    window.height = 280;
+    // The cap only wins once 45% of the window would leave the sheet under
+    // 160px: h < 160 / 0.55 ≈ 291. At 200px the ratio would reserve 90px, so
+    // the cap (h - 160 = 40px) must be the value actually used.
+    window.height = 200;
     const compactTop = flatten(frame('android', { compact: true }).props.style).paddingTop;
-    expect(compactTop).toBeLessThanOrEqual(280 - 160);
-    expect(compactTop).toBeLessThan(280);
+    expect(compactTop).toBe(window.height - 160);
+    expect(compactTop).toBeLessThan(window.height * 0.45);
+
+    // Above the threshold the ratio is smaller than the cap and is used as-is.
+    window.height = 800;
+    expect(flatten(frame('android', { compact: true }).props.style).paddingTop).toBe(window.height * 0.45);
     window.height = 800;
   });
 });

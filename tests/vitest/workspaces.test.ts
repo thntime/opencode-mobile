@@ -124,6 +124,7 @@ it('keeps lifecycle decisions current and closes projects without resetting reta
       loadConnectionProfiles: async () => [], mutateConnectionProfiles: vi.fn(), saveProfilePassword: vi.fn(), deleteProfilePassword: vi.fn(), pickModelPreferences: () => ({}) },
     '@/lib/opencode/client': { defaultConnectionSettings: { serverUrl: 'http://default', username: '' } },
     '@/lib/opencode/client/url': { getServerHostname: (value: string) => value },
+    '@/lib/relay/url': { normalizeRelayUrl: (value: string) => value.trim().replace(/\/+$/, '') },
     '@/providers/persistence-hydration': { createPersistenceWriter: () => writer },
     '@/providers/shared-event-stream': { createSharedEventStream: () => () => {} },
     '@/providers/workspace-storage': { WORKSPACES_STORAGE_KEY: 'workspaces', parseWorkspaces: () => ({ connections: entries, focus: { connectionId: 'a', projectPath: '/repo' } }), serializeWorkspaces: () => 'stored' },

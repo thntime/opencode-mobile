@@ -1,15 +1,37 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getConnectionScope, getConnectionUiScope } from '@/lib/connection-scope';
-import { createProfileId, findMatchingProfile, getProfilePassword, loadConnectionProfiles, mutateConnectionProfiles, saveProfilePassword, deleteProfilePassword, pickModelPreferences } from '@/lib/connection-profiles';
+import { clearRelayConnectionState, createProfileId, findMatchingProfile, getProfilePassword, loadConnectionProfiles, mutateConnectionProfiles, saveProfilePassword, deleteProfilePassword, pickModelPreferences } from '@/lib/connection-profiles';
 import { getServerHostname } from '@/lib/opencode/client/url';
 import { defaultConnectionSettings, type OpencodeConnectionSettings } from '@/lib/opencode/client';
+import { normalizeRelayUrl } from '@/lib/relay/url';
 import type { ChatPreferences } from '@/providers/opencode-preferences';
 import type { OpencodeProviderState } from '@/providers/use-opencode-provider-state';
 import { createPersistenceWriter } from '@/providers/persistence-hydration';
 import { createSharedEventStream } from '@/providers/shared-event-stream';
 import { parseWorkspaces, serializeWorkspaces, WORKSPACES_STORAGE_KEY } from '@/providers/workspace-storage';
 import { workspaceKey, type ConnectionRecord, type WorkspaceSnapshot, type WorkspaceTarget } from '@/providers/workspace-types';
+
+type RelayBlock = NonNullable<OpencodeConnectionSettings['relay']>;
+
+// The Relay token is a single per-process account slot. Two entries whose Relay
+// URL or account differ can never both authenticate, so the stale one must not
+// stay enabled: tapping it would send the new token to the old Relay, take a
+// 401 and sign the user out of the session they just started.
+function sameRelayIdentity(a?: OpencodeConnectionSettings['relay'], b?: OpencodeConnectionSettings['relay']) {
+  if (!a || !b) return false;
+  return normalizeRelayUrl(a.relayUrl) === normalizeRelayUrl(b.relayUrl) && a.account.trim() === b.account.trim();
+}
+
+function withoutOtherRelayAccounts(entries: ConnectionRecord[], relay: RelayBlock) {
+  return entries.filter((entry) => !entry.settings.relay || sameRelayIdentity(entry.settings.relay, relay));
+}
+
+// A pending entry is the Relay sign-in before a host is picked: it carries the
+// account identity in `getConnectionUiScope` and an empty `serverUrl`.
+function isPendingRelay(entry: ConnectionRecord) {
+  return Boolean(entry.settings.relay && !entry.settings.relay.hostId);
+}
 
 export const SERVER_PREFERENCE_KEYS = ['providerId', 'modelId', 'enabledModelIds', 'providerModelSelections', 'modelVariantSelections', 'recentModelIds', 'mode', 'autoApprove'] as const;
 export function serverPreferences(value: Partial<ChatPreferences>) {
@@ -80,12 +102,24 @@ export function useWorkspaceConnections(shell: OpencodeProviderState, hydrated: 
           projects: [initial.activeProjectPath ?? ''], events: createSharedEventStream() });
       }
       if (cancelled) return;
-      const target = stored?.focus ?? { connectionId: entries[0].id, projectPath: entries[0].projects[0] ?? '' };
-      change(() => entries); select(target, false); setReady(true);
+      // A Relay sign-in can land while AsyncStorage is still being read. Merge
+      // instead of replacing the table so the pre-hydration entry (and the
+      // focus the sign-in selected) is not lost to the stored snapshot.
+      const raced = records.current.length > 0;
+      const merged = raced
+        ? [...entries, ...records.current.filter((entry) => !entries.some((storedEntry) => storedEntry.id === entry.id))]
+        : entries;
+      const target = raced
+        ? selected.current ?? stored?.focus ?? { connectionId: merged[0].id, projectPath: merged[0].projects[0] ?? '' }
+        : stored?.focus ?? { connectionId: entries[0].id, projectPath: entries[0].projects[0] ?? '' };
+      change(() => merged); select(target, false); setReady(true);
     })().catch((error) => {
       console.error('Could not restore workspaces.', error);
       canPersist.current = false;
       if (cancelled) return;
+      // A failed read must not discard a connection that was created while the
+      // read was in flight.
+      if (records.current.length) { setReady(true); return; }
       const initial = shellRef.current;
       const id = getConnectionUiScope(initial.settings);
       change(() => [{ id, name: getServerHostname(initial.settings.serverUrl), settings: initial.settings, enabled: initial.onboardingVersion > 0,
@@ -184,18 +218,39 @@ export function useWorkspaceConnections(shell: OpencodeProviderState, hydrated: 
     }
     select({ connectionId: target.connectionId, projectPath });
   }, [connectedWorkspace, pauseConversation, select]);
-  const switchConnection = useCallback(async (settings: Pick<OpencodeConnectionSettings, 'serverUrl' | 'username' | 'password' | 'connect'>, preferences?: Partial<ChatPreferences>, selectWorkspace = true) => {
+  const switchConnection = useCallback(async (settings: Pick<OpencodeConnectionSettings, 'serverUrl' | 'username' | 'password' | 'connect'> & { relay?: OpencodeConnectionSettings['relay'] }, preferences?: Partial<ChatPreferences>, selectWorkspace = true) => {
     const full = { ...settings, directory: '' };
+    const previousRelay = records.current.find((entry) => entry.id === selected.current?.connectionId)?.settings.relay ?? shellRef.current.settings.relay;
+    // D1/I3: leaving Relay mode must drop the account session (token, host keys,
+    // E2E passphrase, persisted hostId). The settings page and deep links reach
+    // this funnel without the runtime connect actions, so the cleanup lives
+    // here as well as in those actions. Clearing is idempotent.
+    if (previousRelay && !full.relay) await clearRelayConnectionState();
     const profile = await saveProfile(full);
     const id = getConnectionUiScope(full);
     const found = records.current.find((entry) => entry.id === id);
+    // I1: the pending sign-in entry is keyed by `relay:{url}:{account}`, so the
+    // canonical host id never matches it. Selecting a host upgrades that entry
+    // (same preferences/projects) instead of appending a second one and leaving
+    // a dead `serverUrl:''` entry behind.
+    const pendingRelay = full.relay?.hostId ? records.current.find((entry) => entry.id !== id && isPendingRelay(entry)) : undefined;
+    const inherited = found ?? pendingRelay;
     if (found) for (const [key, runtime] of Object.entries(live.current)) if ((JSON.parse(key) as string[])[0] === id) runtime.suspend();
-    const projectPath = found?.projects[0] ?? shellRef.current.projectPathsByConnection[getConnectionScope(full)]?.[0] ?? '';
-    change((current) => found ? current.map((entry) => entry.id === id ? { ...entry, settings: full, enabled: true,
-      preferences: { ...entry.preferences, ...serverPreferences(preferences ?? {}) }, events: createSharedEventStream() } : entry)
-      : [...current.filter((entry) => shellRef.current.onboardingVersion > 0 || entry.enabled || entry.id !== getConnectionUiScope(defaultConnectionSettings)), { id, name: profile.name, settings: full, enabled: true, preferences: { autoApprove: false, ...serverPreferences(preferences ?? profile.modelPreferences ?? {}) }, projects: [projectPath], events: createSharedEventStream() }]);
+    const projectPath = inherited?.projects[0] ?? shellRef.current.projectPathsByConnection[getConnectionScope(full)]?.[0] ?? '';
+    change((current) => {
+      // When the host entry already exists the pending sign-in is dead weight.
+      // Otherwise it is removed only after `ensure` succeeds, so a failed
+      // selection cannot leave the focus pointing at a deleted entry.
+      const withoutPending = found && full.relay?.hostId ? current.filter((entry) => entry.id === id || !isPendingRelay(entry)) : current;
+      return found ? withoutPending.map((entry) => entry.id === id ? { ...entry, settings: full, enabled: true,
+        preferences: { ...entry.preferences, ...serverPreferences(preferences ?? {}) }, events: createSharedEventStream() } : entry)
+        : [...withoutPending.filter((entry) => shellRef.current.onboardingVersion > 0 || entry.enabled || entry.id !== getConnectionUiScope(defaultConnectionSettings)), { id, name: profile.name, settings: full, enabled: true,
+          preferences: { autoApprove: false, ...(pendingRelay?.preferences ?? {}), ...serverPreferences(preferences ?? profile.modelPreferences ?? {}) },
+          projects: pendingRelay?.projects ?? [projectPath], events: createSharedEventStream() }];
+    });
     const target = { connectionId: id, projectPath };
     const runtime = await ensure(target);
+    if (pendingRelay) change((current) => current.filter((entry) => !isPendingRelay(entry)));
     if (selectWorkspace) { await pauseConversation(); select(target); }
     return runtime.values.connectionValue.connect();
   }, [change, ensure, pauseConversation, saveProfile, select]);
@@ -209,12 +264,16 @@ export function useWorkspaceConnections(shell: OpencodeProviderState, hydrated: 
     const existing = records.current.find((entry) => entry.id === id);
     const relay = value.relay;
     const name = relay?.hostName ?? (relay ? getServerHostname(relay.relayUrl) || relay.relayUrl : 'Relay');
-    change((current) => existing
-      ? current.map((entry) => entry.id === id ? { ...entry, settings: value, enabled: true, events: createSharedEventStream() } : entry)
-      // Any other pending relay sign-in (different account or URL) is
-      // superseded; direct profiles are left untouched.
-      : [...current.filter((entry) => !(entry.settings.relay && !entry.settings.serverUrl)),
-          { id, name, settings: value, enabled: true, preferences: { autoApprove: false }, projects: [''], events: createSharedEventStream() }]);
+    change((current) => {
+      // I2: a different Relay URL or account supersedes every Relay entry of the
+      // previous account. Direct profiles are left untouched.
+      const base = relay ? withoutOtherRelayAccounts(current, relay) : current;
+      return existing
+        ? base.map((entry) => entry.id === id ? { ...entry, settings: value, enabled: true, events: createSharedEventStream() } : entry)
+        // Any other pending relay sign-in (same account) is superseded.
+        : [...base.filter((entry) => !(entry.settings.relay && !entry.settings.serverUrl)),
+            { id, name, settings: value, enabled: true, preferences: { autoApprove: false }, projects: [''], events: createSharedEventStream() }];
+    });
     select({ connectionId: id, projectPath: existing?.projects[0] ?? '' });
     shellRef.current.setSettings(value);
   }, [change, select]);
@@ -233,8 +292,16 @@ export function useWorkspaceConnections(shell: OpencodeProviderState, hydrated: 
     if (manualChange) canPersist.current = true;
     for (const [key, runtime] of Object.entries(live.current)) if ((JSON.parse(key) as string[])[0] === id && key !== origin) runtime.suspend();
     const nextId = getConnectionUiScope(value);
-    change((current) => current.map((entry) => entry.id === id ? { ...entry, id: nextId, settings: value, events: createSharedEventStream(), ...(manualChange ? { enabled: false } : {}),
-      ...(nextId === id ? {} : { enabled: false, projects: [''], preferences: { autoApprove: false }, events: createSharedEventStream() }) } : entry));
+    change((current) => {
+      // I2: a Relay write also supersedes entries of another Relay account.
+      // The edited entry is exempt because it is being migrated below.
+      const base = value.relay ? withoutOtherRelayAccounts(current, value.relay) : current;
+      return base
+        // An id migration must not leave two records with the same identity.
+        .filter((entry) => entry.id === id || entry.id !== nextId)
+        .map((entry) => entry.id === id ? { ...entry, id: nextId, settings: value, events: createSharedEventStream(), ...(manualChange ? { enabled: false } : {}),
+          ...(nextId === id ? {} : { enabled: false, projects: [''], preferences: { autoApprove: false }, events: createSharedEventStream() }) } : entry);
+    });
     if (selected.current?.connectionId === id) { if (nextId !== id) select({ connectionId: nextId, projectPath: '' }); shellRef.current.setSettings(value); }
   }, [change, select]);
   const updatePreferences = useCallback((id: string, value: ChatPreferences) => {

@@ -69,7 +69,7 @@ export class RelayHostAuthRequiredError extends Error {
 export class RelayForbiddenError extends Error {
   readonly code = 'relay_forbidden';
 
-  constructor() {
+  constructor(public readonly reason: RelayRefreshFailure = 'rejected') {
     super('Relay 拒绝了该账号的访问（403）');
     this.name = 'RelayForbiddenError';
   }
@@ -101,13 +101,20 @@ export function isRelayUnreachable(value: unknown): value is RelayUnreachableErr
   return typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'relay_unreachable';
 }
 
+export function isRelayForbidden(value: unknown): value is RelayForbiddenError {
+  if (value instanceof RelayForbiddenError) return true;
+  return typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'relay_forbidden';
+}
+
 // The failure reason decides both the error type and whether the caller may
 // sign the user out. Only a credential the Relay actually rejected maps to
 // `RelayReauthRequiredError`; a transport/protocol failure is retryable and
-// must leave the session intact.
+// must leave the session intact. A 403 from `/api/login` is an authorization
+// decision: it is fatal but must not clear the token or the host selection.
 export function relayRefreshError(reason: RelayRefreshFailure, replayed = false) {
   if (reason === 'missing_password') return new RelayLoginRequiredError(reason);
   if (reason === 'invalid_credentials') return new RelayReauthRequiredError(reason, replayed);
+  if (reason === 'rejected') return new RelayForbiddenError(reason);
   return new RelayUnreachableError(reason);
 }
 

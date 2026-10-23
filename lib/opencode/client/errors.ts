@@ -44,6 +44,10 @@ function describeError(error: unknown) {
 }
 
 const TUNNEL_STARTUP_PATTERN = /\b1033\b|cloudflare error 1033/i;
+// The Relay's own 403 body. SDK wrappers sometimes drop the stable error code,
+// so the message is the only surviving signal; matching it before the generic
+// `status === 403 -> auth` rule keeps `performConnect` from dropping the host.
+const RELAY_FORBIDDEN_PATTERN = /Relay 拒绝了该账号的访问/;
 const AUTH_PATTERN = /credentials were rejected|credentials expired|credentials are missing|invalid cloud link profile|pair this device again|authentication required|unauthorized/i;
 const ENTITLEMENT_PATTERN = /no active subscription|access was denied[^]*?(?:subscription|entitlement)|cloud link entitlement|entitlement/i;
 const INSECURE_PATTERN = /certificate|(?:^|[^a-z])(?:TLS|SSL|CERT)(?:[^a-z]|$)|NSURLErrorDomain.*-120[0-6]\b|invalid.*url|unsafe.*url/i;
@@ -63,7 +67,10 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailureKind
   const { status, message } = describeError(error);
   if (TUNNEL_STARTUP_PATTERN.test(message)) return 'tunnel-startup';
   const explicitStatus = status ?? (/\b401\b/.test(message) ? 401 : /\b403\b/.test(message) ? 403 : undefined);
+  // An explicit 401 is a rejected credential even when the wrapper kept a
+  // Relay-shaped message. Only the 403 body needs the message fallback.
   if (explicitStatus === 401) return 'auth';
+  if (RELAY_FORBIDDEN_PATTERN.test(message)) return 'forbidden';
   if (explicitStatus === 403) return ENTITLEMENT_PATTERN.test(message) ? 'entitlement' : 'auth';
   if (AUTH_PATTERN.test(message)) return 'auth';
   if (ENTITLEMENT_PATTERN.test(message)) return 'entitlement';

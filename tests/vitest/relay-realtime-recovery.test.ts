@@ -10,9 +10,10 @@ const appState = {
   addEventListener: () => ({ remove: () => undefined }),
 };
 
-function stream(behaviour: 'throw' | 'yield') {
+function stream(behaviour: 'throw' | 'yield' | 'forbidden') {
   return async function* () {
     if (behaviour === 'throw') throw new Error('401 Unauthorized');
+    if (behaviour === 'forbidden') throw new Error('Relay 拒绝了该账号的访问（403）');
     yield { type: 'ready', location: { directory: '/repo' } };
     await new Promise(() => undefined);
   };
@@ -25,7 +26,11 @@ async function mountRealtime(onFatalError: () => Promise<boolean>, subscribe: ()
     'react-native': { AppState: appState },
     '@/lib/opencode/events': { subscribeEvents: subscribe },
     '@/lib/opencode/client/errors': {
-      classifyConnectionFailure: (error: { message?: string }) => (/401|unauthorized/i.test(error?.message ?? '') ? 'auth' : 'unknown'),
+      classifyConnectionFailure: (error: { message?: string }) => {
+        const message = error?.message ?? '';
+        if (/Relay 拒绝了该账号的访问|\b403\b/.test(message)) return 'forbidden';
+        return /401|unauthorized/i.test(message) ? 'auth' : 'unknown';
+      },
       isAuthConnectionFailure: (kind: string) => kind === 'auth' || kind === 'entitlement',
     },
     '@/providers/realtime-timing': { SSE_STALENESS_MS: 60_000, SSE_FOREGROUND_CYCLE_MS: 60_000, WATCHDOG_TICK_MS: 60_000 },
@@ -80,6 +85,26 @@ describe('relay realtime auth recovery', () => {
     await runtime.settle();
 
     expect(onFatalError).toHaveBeenCalledWith('auth');
+    expect(calls).toEqual(['attempt']);
+    expect(runtime.value.eventStreamStatus).toBe('error');
+    runtime.unmount();
+  });
+
+  // I5: a Relay 403 cannot heal by retrying (the token is not the problem), so
+  // the loop must stop and surface the fatal kind instead of reconnecting every
+  // 15s. The provider decides whether the selected host survives.
+  it('stops the loop on a Relay 403 instead of retrying forever', async () => {
+    const calls: string[] = [];
+    const subscribe = () => {
+      calls.push('attempt');
+      return stream('forbidden')();
+    };
+    const onFatalError = vi.fn(async () => false);
+    const { runtime } = await mountRealtime(onFatalError, subscribe);
+
+    await runtime.settle();
+
+    expect(onFatalError).toHaveBeenCalledWith('forbidden');
     expect(calls).toEqual(['attempt']);
     expect(runtime.value.eventStreamStatus).toBe('error');
     runtime.unmount();

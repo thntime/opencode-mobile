@@ -43,9 +43,8 @@ function parseWorkspaceEntry(item: unknown, seen: Set<string>): StoredConnection
   // Relay sign-in entries legitimately carry no `serverUrl` until a host is
   // chosen; their stable identity is the Relay account. Every other entry still
   // needs a valid direct URL.
-  const relayPending = Boolean(settings.relay && !settings.serverUrl);
-  if (!relayPending && (!settings.serverUrl || !isValidServerUrl(settings.serverUrl))) throw new Error('Invalid connection identity.');
-  if (settings.serverUrl && !isValidServerUrl(settings.serverUrl)) throw new Error('Invalid connection identity.');
+  const relayPending = Boolean(settings.relay && !settings.relay.hostId && !settings.serverUrl?.trim());
+  if (!relayPending && !isValidServerUrl(settings.serverUrl ?? '')) throw new Error('Invalid connection identity.');
   if (getConnectionUiScope({ ...settings, serverUrl: settings.serverUrl ?? '', username: settings.username }) !== item.id) throw new Error('Invalid connection identity.');
   seen.add(item.id);
   return { id: item.id, name: item.name, enabled: item.enabled, settings: { ...settings, serverUrl: settings.serverUrl ?? '', username: settings.username, directory: '' },

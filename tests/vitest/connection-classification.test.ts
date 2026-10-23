@@ -56,6 +56,14 @@ describe('connection failure classification', () => {
     expect(isRetryableConnectionFailure('forbidden')).toBe(false);
   });
 
+  // I4: some SDK wrappers flatten the error and drop `code`. A 403 whose body
+  // is the Relay's account message must still be forbidden, not auth, or the
+  // selected host is dropped as if the token had been rejected.
+  it('recognizes a Relay 403 by message when the wrapper loses the code', () => {
+    expect(classifyConnectionFailure(new Error('Relay 拒绝了该账号的访问（403）'))).toBe('forbidden');
+    expect(classifyConnectionFailure(new Error('Relay 拒绝了该账号的访问'))).toBe('forbidden');
+  });
+
   it('separates offline transitions from timeouts and protocol mismatches', () => {
     expect(classifyConnectionFailure(new Error('Network is unreachable'))).toBe('offline');
     expect(classifyConnectionFailure(new Error('fetch failed', { cause: { code: 'ENETUNREACH' } }))).toBe('offline');

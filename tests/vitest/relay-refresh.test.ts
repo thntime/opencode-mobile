@@ -4,12 +4,14 @@ import { fetchConnection } from '@/lib/opencode/client/fetch';
 import { decryptBody } from '@/lib/relay/crypto';
 import { clearHostKeys, getHostKey, setHostKey } from '@/lib/relay/keywrap';
 import {
+  RelayForbiddenError,
   RelayHostAuthRequiredError,
   RelayLoginRequiredError,
   RelayReauthRequiredError,
   RelayUnreachableError,
   clearRelaySession,
   refreshRelayToken,
+  relayRefreshError,
   resetRelayRefreshState,
 } from '@/lib/relay/refresh';
 import { clearRelayLoginRequired, relayLoginRequired } from '@/lib/relay/guard';
@@ -188,6 +190,22 @@ describe('refreshRelayToken', () => {
 });
 
 describe('refresh failure classification', () => {
+  // M3: the sign-in failure reason decides the error type. A 403 from
+  // `/api/login` is an account decision, not a transport failure; retrying or
+  // reporting "network" would mislead the user.
+  it('maps rejected to RelayForbiddenError and keeps protocol failures retryable', () => {
+    const forbidden = relayRefreshError('rejected');
+    expect(forbidden).toBeInstanceOf(RelayForbiddenError);
+    expect(forbidden.code).toBe('relay_forbidden');
+    expect((forbidden as RelayForbiddenError).reason).toBe('rejected');
+
+    for (const reason of ['invalid_request', 'invalid_response', 'unreachable'] as const) {
+      const error = relayRefreshError(reason);
+      expect(error).toBeInstanceOf(RelayUnreachableError);
+      expect((error as RelayUnreachableError).reason).toBe(reason);
+    }
+  });
+
   // D3: the failure reason decides the error type and whether the session is
   // destroyed. Only a credential the Relay actually rejected may sign out.
   const cases = [

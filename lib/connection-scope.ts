@@ -56,6 +56,12 @@ export function normalizeConnectionUrl(serverUrl: string): NormalizedConnectionU
  * concatenated into AsyncStorage keys and compared for equality without any
  * escaping. It is an encoding, not a hash: equal identities always produce the
  * same scope and different identities never collide.
+ *
+ * Constraint: a connection identity must carry a server URL. Empty (or
+ * unparsable) URLs are not connections and every such input collapses to the
+ * same key, so callers must never persist or select an entry whose only
+ * identity is an empty URL. A Relay sign-in before a host is chosen is
+ * identified by `getConnectionUiScope` instead, which keys on the account.
  */
 export function getConnectionScope({ serverUrl, username }: ConnectionIdentity): string {
   const url = normalizeConnectionUrl(serverUrl);

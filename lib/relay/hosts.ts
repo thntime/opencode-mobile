@@ -1,5 +1,5 @@
 import { relayFetch } from './authenticated-fetch';
-import { isRelayLoginRequired, isRelayReauthRequired, isRelayUnreachable } from './refresh';
+import { isRelayForbidden, isRelayLoginRequired, isRelayReauthRequired, isRelayUnreachable } from './refresh';
 import type { RelayHost } from './types';
 import { normalizeRelayUrl } from './url';
 
@@ -34,9 +34,10 @@ export async function fetchRelayHosts(relayUrl: string, account?: string): Promi
   } catch (error) {
     // A refresh that cannot mint a token (or a replayed 401) must reach the
     // screen as `relay_reauth_required` so it can sign out exactly once. The
-    // classified "enter the password again" / "unreachable" errors keep their
-    // type too, so the caller never reports them as an unreadable host list.
-    if (isRelayReauthRequired(error) || isRelayLoginRequired(error) || isRelayUnreachable(error)) throw error;
+    // classified "enter the password again" / "unreachable" / forbidden errors
+    // keep their type too, so the caller never reports them as an unreadable
+    // host list.
+    if (isRelayReauthRequired(error) || isRelayLoginRequired(error) || isRelayUnreachable(error) || isRelayForbidden(error)) throw error;
     throw new Error('Could not reach the Relay. Check the address and try again.');
   }
   if (!response.ok) {

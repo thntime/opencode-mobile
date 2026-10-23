@@ -44,7 +44,7 @@ async function loadDialog(runtime: ReturnType<typeof hookRuntime>) {
   });
 }
 
-async function mountHosts(options: { unlockError?: unknown; fetchError?: unknown } = {}) {
+async function mountHosts(options: { unlockError?: unknown; fetchError?: unknown; hostKey?: unknown; switchResult?: unknown } = {}) {
   const runtime = hookRuntime();
   const dialog = await loadDialog(runtime);
   const updateSettings = vi.fn();
@@ -59,10 +59,11 @@ async function mountHosts(options: { unlockError?: unknown; fetchError?: unknown
     if (options.unlockError) throw options.unlockError;
     return new Uint8Array(32);
   });
-  const fetchHostKey = vi.fn(async () => ({ wrapped: 'wrapped-key', salt: 'salt', kdf: 'scrypt' }));
+  const fetchHostKey = vi.fn(async () => options.hostKey ?? ({ wrapped: 'wrapped-key', salt: 'salt', kdf: 'scrypt' }));
+  const switchConnection = vi.fn(async () => options.switchResult ?? ({ status: 'connected' }));
   const router = { replace, back: vi.fn(), canGoBack: () => false };
   const settings = { relay: { relayUrl: RELAY_URL, account: ACCOUNT } };
-  const connection = { settings, updateSettings, switchConnection: vi.fn() };
+  const connection = { settings, updateSettings, switchConnection };
   const onboarding = { onboardingCompleted: true, onboardingActive: false };
   const insets = { top: 0, bottom: 0 };
   const module = await loadTs('app/relay-hosts.tsx', {
@@ -97,7 +98,7 @@ async function mountHosts(options: { unlockError?: unknown; fetchError?: unknown
 
   runtime.mount(module.default, {});
   await runtime.settle();
-  return { runtime, dialog, updateSettings, replace, logout, clearRelayConnectionState, fetchRelayHosts, unlockHostKey, fetchHostKey };
+  return { runtime, dialog, updateSettings, replace, logout, clearRelayConnectionState, fetchRelayHosts, unlockHostKey, fetchHostKey, switchConnection };
 }
 
 async function openUnlockDialog(view: Awaited<ReturnType<typeof mountHosts>>) {
@@ -135,6 +136,8 @@ describe('relay unlock error mapping (from handleUnlock)', () => {
     ['relay unavailable', new RelayE2EError('relay_e2e_unavailable', 'offline'), 'relay:unlock.network'],
     ['relay rejected the account', new RelayE2EError('relay_e2e_unauthorized', 'auth', 403), 'relay:unlock.unauthorized'],
     ['upstream 503 folded into key_unavailable', new RelayE2EError('relay_e2e_key_unavailable', 'upstream', 503), 'relay:unlock.network'],
+    // M5: a missing in-memory account password is not a transport failure.
+    ['account password required again', { code: 'relay_login_required' }, 'relay:unlock.unauthorized'],
   ];
 
   it.each(cases)('%s renders its own message', async (_name, unlockError, expectedKey) => {
@@ -155,14 +158,49 @@ describe('relay host list failures', () => {
     expect(findByTestId(view.runtime.value, 'relay-hosts-error')?.props.children).toBe('relay:hosts.loginRequired');
   });
 
-  it('clears the relay target and the direct credentials when signing out', async () => {
+  // M4: a generic load failure and a host-selection failure must be
+  // distinguishable by testID, so one cannot mask the other.
+  it('keeps load and selection failures on separate testIDs', async () => {
+    const loadView = await mountHosts({ fetchError: new Error('boom') });
+    expect(findByTestId(loadView.runtime.value, 'relay-hosts-load-error')).toBeDefined();
+    expect(findByTestId(loadView.runtime.value, 'relay-host-select-error')).toBeUndefined();
+
+    const selectView = await mountHosts({
+      hostKey: {},
+      switchResult: { status: 'error', kind: 'host-auth', message: 'boom' },
+    });
+    const list = find(selectView.runtime.value, (value) => value.type === 'RelayHostList');
+    list!.props.onSelect(HOST);
+    await selectView.runtime.settle();
+    expect(findByTestId(selectView.runtime.value, 'relay-host-select-error')).toBeDefined();
+    expect(findByTestId(selectView.runtime.value, 'relay-hosts-load-error')).toBeUndefined();
+  });
+
+  // M6: an account the Relay forbids must not navigate into the tabs with a
+  // dead connection; the host list explains why and stays usable.
+  it('stays on the host list and shows the reason for a Relay 403', async () => {
+    const view = await mountHosts({
+      hostKey: {},
+      switchResult: { status: 'error', kind: 'forbidden', message: 'Relay 拒绝了该账号的访问（403）' },
+    });
+    const list = find(view.runtime.value, (value) => value.type === 'RelayHostList');
+    list!.props.onSelect(HOST);
+    await view.runtime.settle();
+
+    expect(findByTestId(view.runtime.value, 'relay-host-select-error')?.props.children).toBe('Relay 拒绝了该账号的访问（403）');
+    expect(view.replace).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Relay account for pre-fill and drops the host when signing out', async () => {
     const view = await mountHosts({ fetchError: { code: 'relay_reauth_required' } });
     await view.runtime.settle();
 
     expect(view.clearRelayConnectionState).toHaveBeenCalledTimes(1);
     expect(view.logout).toHaveBeenCalledTimes(1);
+    // M1: rewriting the focused entry with an empty URL produced an invalid
+    // record. Keeping the account lets /relay-login pre-fill the form.
     expect(view.updateSettings).toHaveBeenCalledWith({
-      relay: undefined,
+      relay: { relayUrl: RELAY_URL, account: ACCOUNT },
       serverUrl: '',
       username: '',
       password: undefined,

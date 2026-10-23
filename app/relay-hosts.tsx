@@ -58,9 +58,20 @@ export default function RelayHostsScreen() {
     // connection to the Relay's forwarding path.
     await clearRelayConnectionState().catch(() => undefined);
     await logout().catch(() => undefined);
-    updateSettings({ relay: undefined, serverUrl: '', username: '', password: undefined, connect: undefined });
+    if (!relay) { router.replace('/relay-login'); return; }
+    // Keep the Relay account (no host) so /relay-login can pre-fill it. Writing
+    // `relay: undefined` with an empty URL produced an invalid registry entry
+    // that the next launch had to discard; the host-less relay block is the
+    // valid "signed out" shape and the id migration disables the entry.
+    updateSettings({
+      relay: { relayUrl: relay.relayUrl, account: relay.account },
+      serverUrl: '',
+      username: '',
+      password: undefined,
+      connect: undefined,
+    });
     router.replace('/relay-login');
-  }, [router, updateSettings]);
+  }, [relay, router, updateSettings]);
 
   const refresh = useCallback(async () => {
     if (!relay) return;
@@ -130,10 +141,11 @@ export default function RelayHostsScreen() {
         connect: undefined,
         relay: { ...relay, hostId: host.id, hostName: host.name },
       });
-      if (result.status === 'error' && result.kind === 'host-auth') {
-        // The host asks for its own Basic credentials. The Relay session and
-        // host selection are still valid, so stay on this screen with the
-        // concrete reason; the list stays tappable for a retry.
+      if (result.status === 'error' && (result.kind === 'host-auth' || result.kind === 'forbidden')) {
+        // The host asks for its own Basic credentials, or the Relay forbids the
+        // account. The Relay session and host selection are still valid (or
+        // recoverable later), so stay on this screen with the concrete reason;
+        // the list stays tappable for a retry.
         setSelectionErrorMessage(result.message);
         setSelectionError(true);
         setSelecting(undefined);
@@ -214,6 +226,13 @@ export default function RelayHostsScreen() {
         await signOutToLogin();
         return true;
       }
+      // M5: losing the in-memory account password is not a transport failure.
+      // The passphrase itself may be fine; ask the user to sign in again instead
+      // of reporting a misleading network error.
+      if (isRelayLoginRequired(reason)) {
+        reportError('unauthorized');
+        return false;
+      }
       // The dialog distinguishes a wrong passphrase, unusable key material,
       // Relay authorization and network failures. Mapping here (rather than in
       // the dialog) keeps `handleUnlock` the single decision point.
@@ -238,7 +257,7 @@ export default function RelayHostsScreen() {
       <View style={styles.body}>
         <Text variant="bodyMedium" style={{ color: palette.muted }}>{t('relay:hosts.subtitle')}</Text>
         {error ? (
-          <HelperText testID="relay-hosts-error" type="error" visible>{t('relay:hosts.loadError')}</HelperText>
+          <HelperText testID="relay-hosts-load-error" type="error" visible>{t('relay:hosts.loadError')}</HelperText>
         ) : null}
         {loadErrorMessage ? (
           <HelperText testID="relay-hosts-error" type="error" visible>{loadErrorMessage}</HelperText>

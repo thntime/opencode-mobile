@@ -155,6 +155,14 @@ export function useOpencodeRealtime({ catalogClient, activeProjectPath, connecte
           await latest.current.onFatalError?.(failureKind);
           break;
         }
+        if (failureKind === 'forbidden') {
+          // The Relay refused the account (403). Refreshing the token cannot
+          // change authorization and retrying only loops every 15s, so stop and
+          // let the provider report the fatal kind (without dropping the host).
+          setEventStreamStatus('error');
+          await latest.current.onFatalError?.(failureKind);
+          break;
+        }
         if (isAuthConnectionFailure(failureKind)) {
           // A relay JWT can be refreshed and the stream rebuilt in place. The
           // provider returns true when recovery succeeded; direct and Cloud Link

@@ -323,17 +323,23 @@ never share a request target.
   `username` and `password` in the same update (`relayModeSettings` in
   `lib/relay/connection-mode.ts`, called by `app/relay-login.tsx`). `serverUrl`
   stays empty until a host is picked, then `lib/relay/url.ts` writes
-  `{relayUrl}/relay/{hostId}`.
+  `{relayUrl}/relay/{hostId}`. The pending sign-in is one registry entry keyed by
+  Relay URL + account; picking a host upgrades that entry in place, and a
+  sign-in for another Relay URL/account removes the previous account's Relay
+  entries (one token slot, so they could never authenticate again).
 - `lib/opencode/client/fetch.ts` re-checks that invariant before every request
   (`isRelayConnectionTarget`): a Relay-mode `serverUrl` that is not
   `{relayUrl}/relay/{hostId}` throws "select a Relay host" and sends nothing.
   This is the second lock for restored backups, deleted profiles and upgraded
   installs, where a stale direct address can survive.
-- switching to a direct profile (`switchConnection` in
-  `providers/use-connection-connect-actions.ts`) clears the `relay` block and
-  calls `clearRelayConnectionState()` (`lib/connection-profiles.ts`), which drops
-  the account token, the host keys, the E2E passphrase and the persisted hostId.
-  Switching between Relay hosts keeps the session and only rewrites `hostId`.
+- switching to a direct profile clears the `relay` block and calls
+  `clearRelayConnectionState()` (`lib/connection-profiles.ts`), which drops the
+  account token, the host keys, the E2E passphrase and the persisted hostId.
+  The cleanup runs in `switchConnection` on both funnels: the workspace registry
+  manager (`providers/use-workspace-connections.ts`, used by the host list,
+  settings connection profiles and session deep links) and the runtime connect
+  actions (`providers/use-connection-connect-actions.ts`). Switching between
+  Relay hosts keeps the session and only rewrites `hostId`.
 
 ### Session cache DTO
 

@@ -282,6 +282,18 @@ export function useConnectionConnectActions({
     // An upstream host challenge is not a rejected Relay/Cloud Link credential:
     // refreshing or dropping the host cannot fix it, so never reconnect.
     if (kind === 'host-auth') return false;
+    // A Relay 403 is an authorization decision. Reconnecting, refreshing the
+    // token or dropping the host cannot change it, so surface it and keep the
+    // session/host selection for when access is restored.
+    if (kind === 'forbidden') {
+      setConnection({
+        status: 'error',
+        kind: 'forbidden',
+        message: 'The Relay refused this account (403). Restore access and reconnect.',
+        checkedAt: Date.now(),
+      });
+      return false;
+    }
     const current = settingsRef.current;
     if (current.connect) {
       void connect().catch(() => undefined);

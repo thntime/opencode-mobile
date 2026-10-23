@@ -360,4 +360,17 @@ describe('profile switching leaves Relay mode', () => {
     expect(clearRelayConnectionState).not.toHaveBeenCalled();
     expect(runtime.value.settings.relay).toEqual(nextRelay);
   });
+
+  // I5: a 403 from the Relay data plane is fatal for the stream, but it is not
+  // a rejected token, so the selected host and the session must survive.
+  it('surfaces a Relay 403 as a forbidden connection error without dropping the host', async () => {
+    const { runtime } = await mountActions(relaySettings());
+
+    await runtime.value.handleStreamAuthFailure('forbidden');
+    await runtime.settle();
+
+    expect(runtime.value.connection).toMatchObject({ status: 'error', kind: 'forbidden' });
+    expect(runtime.value.connection.message).toMatch(/403/);
+    expect(runtime.value.settings.relay).toEqual(relaySettings().relay);
+  });
 });
