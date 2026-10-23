@@ -41,6 +41,9 @@
     "passphrase": "Passphrase",
     "submit": "Unlock and connect",
     "badPassphrase": "The passphrase is incorrect. Try again.",
+    "keyFormat": "The Relay returned an unusable encryption key. Try again from the computer list.",
+    "network": "Could not reach the Relay. Check your network and try again.",
+    "unauthorized": "The Relay rejected this account's access. Sign in again.",
     "unavailable": "Could not reach the Relay. Check it and try again."
   }
 }

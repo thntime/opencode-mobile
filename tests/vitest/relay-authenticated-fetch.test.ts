@@ -1,18 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearRelayToken, getRelayToken } from '@/lib/relay/auth';
+import { relayFetch } from '@/lib/relay/authenticated-fetch';
 import { fetchRelayHosts } from '@/lib/relay/hosts';
 import { clearHostKeys, fetchHostKey } from '@/lib/relay/keywrap';
-import { isRelayReauthRequired, resetRelayRefreshState } from '@/lib/relay/refresh';
+import {
+  RelayLoginRequiredError,
+  RelayReauthRequiredError,
+  RelayUnreachableError,
+  isRelayReauthRequired,
+  resetRelayRefreshState,
+} from '@/lib/relay/refresh';
 import { clearRelaySessionPassword, setRelaySessionPassword } from '@/lib/relay/session-password';
 
-const h = vi.hoisted(() => ({ secure: new Map<string, string>(), storage: new Map<string, string>() }));
+const h = vi.hoisted(() => ({ secure: new Map<string, string>(), storage: new Map<string, string>(), tokenDeletes: 0 }));
 
 vi.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'when-unlocked-this-device-only',
   getItemAsync: async (key: string) => h.secure.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => { h.secure.set(key, value); },
-  deleteItemAsync: async (key: string) => { h.secure.delete(key); },
+  deleteItemAsync: async (key: string) => {
+    if (key === 'opencode-mobile.relay-token') h.tokenDeletes += 1;
+    h.secure.delete(key);
+  },
 }));
 vi.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -66,6 +76,7 @@ beforeEach(async () => {
   resetRelayRefreshState();
   clearRelaySessionPassword();
   await clearRelayToken();
+  h.tokenDeletes = 0;
 });
 
 afterEach(() => {
@@ -145,17 +156,21 @@ describe('relay control-plane token refresh', () => {
     ]);
   });
 
-  it('raises relay_reauth_required when no password can mint a token', async () => {
+  it('raises relay_login_required when no password can mint a token', async () => {
     h.secure.set(TOKEN_KEY, 'opaque-token');
     const transport = vi.fn(async () => json({ error: 'unauthorized' }, 401));
     vi.stubGlobal('fetch', transport);
 
     const error = await fetchRelayHosts(RELAY_URL, ACCOUNT).catch((reason: unknown) => reason);
 
-    expect(isRelayReauthRequired(error)).toBe(true);
+    expect(error).toBeInstanceOf(RelayLoginRequiredError);
+    expect((error as RelayLoginRequiredError).code).toBe('relay_login_required');
     // No login round-trip is possible, so only the original request went out.
     expect(urlsOf(transport)).toEqual([`${RELAY_URL}/api/hosts`]);
-    expect(await getRelayToken()).toBeUndefined();
+    // D3: the persisted token is untouched; the user only has to re-enter the
+    // account password, not sign out of the host.
+    expect(await getRelayToken()).toBe('opaque-token');
+    expect(h.tokenDeletes).toBe(0);
   });
 
   it('does not replay a second time when the refreshed token is also rejected', async () => {
@@ -174,5 +189,57 @@ describe('relay control-plane token refresh', () => {
       `${RELAY_URL}/api/login`,
       `${RELAY_URL}/api/hosts`,
     ]);
+  });
+});
+
+describe('control-plane refresh failure classification', () => {
+  // D3: the control plane classifies the same way as the data plane, so the
+  // hosts screen can distinguish "enter the password again" from "offline"
+  // without inventing its own mapping.
+  it('maps missing_password to RelayLoginRequiredError and keeps the token', async () => {
+    h.secure.set(TOKEN_KEY, expiredToken());
+    const transport = vi.fn();
+    vi.stubGlobal('fetch', transport);
+
+    const error = await relayFetch(RELAY_URL, '/api/hosts').catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(RelayLoginRequiredError);
+    expect((error as RelayLoginRequiredError).reason).toBe('missing_password');
+    expect(transport).not.toHaveBeenCalled();
+    expect(await getRelayToken()).toBeDefined();
+    expect(h.tokenDeletes).toBe(0);
+  });
+
+  it('maps unreachable to RelayUnreachableError and keeps the token', async () => {
+    setRelaySessionPassword('secret');
+    persistRelay();
+    h.secure.set(TOKEN_KEY, expiredToken());
+    const transport = vi.fn(async () => { throw new TypeError('Network request failed'); });
+    vi.stubGlobal('fetch', transport);
+
+    const error = await relayFetch(RELAY_URL, '/api/hosts').catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(RelayUnreachableError);
+    expect((error as RelayUnreachableError).code).toBe('relay_unreachable');
+    expect((error as RelayUnreachableError).reason).toBe('unreachable');
+    // Only the sign-in attempt went out; the host request never left.
+    expect(urlsOf(transport)).toEqual([`${RELAY_URL}/api/login`]);
+    expect(await getRelayToken()).toBeDefined();
+    expect(h.tokenDeletes).toBe(0);
+  });
+
+  it('maps invalid_credentials to RelayReauthRequiredError and clears the session', async () => {
+    setRelaySessionPassword('wrong');
+    persistRelay();
+    h.secure.set(TOKEN_KEY, expiredToken());
+    const transport = vi.fn(async () => json({ error: 'invalid email or password' }, 401));
+    vi.stubGlobal('fetch', transport);
+
+    const error = await relayFetch(RELAY_URL, '/api/hosts').catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(RelayReauthRequiredError);
+    expect((error as RelayReauthRequiredError).reason).toBe('invalid_credentials');
+    expect(h.tokenDeletes).toBe(1);
+    expect(await getRelayToken()).toBeUndefined();
   });
 });

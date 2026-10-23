@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_STORAGE_KEY } from '@/lib/storage-keys';
 
 import { decodeTokenExpiry, getRelayToken, isRelayTokenExpiring } from './auth';
-import { RelayReauthRequiredError, refreshRelayToken, relayTokenExpiryHint } from './refresh';
+import { RelayReauthRequiredError, refreshRelayToken, relayRefreshError, relayTokenExpiryHint } from './refresh';
 import { parseRelayAuth, type RelayAuth } from './types';
 import { normalizeRelayUrl } from './url';
 
@@ -44,10 +44,10 @@ async function persistedRelay(relayUrl: string): Promise<RelayAuth | undefined> 
 
 async function refreshToken(relayUrl: string, account: string | undefined): Promise<string> {
   // An absent account cannot refresh; `login` rejects it as `invalid_request`
-  // and `performRefresh` clears the stale session, which is the correct
-  // outcome. Passing an empty string keeps the failure path uniform.
+  // and `performRefresh` classifies it, which is the correct outcome. Passing
+  // an empty string keeps the failure path uniform.
   const result = await refreshRelayToken(relayUrl, account?.trim() ?? '');
-  if (result.status !== 'refreshed') throw new RelayReauthRequiredError(result.reason);
+  if (result.status !== 'refreshed') throw relayRefreshError(result.reason);
   return result.token;
 }
 

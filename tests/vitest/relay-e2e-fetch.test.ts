@@ -208,12 +208,14 @@ describe('relay E2E whole-body responses', () => {
   });
 
   it('passes relay-level plaintext errors through unchanged', async () => {
-    transport.mockResolvedValue(new Response('Bad Gateway', { status: 502, headers: { 'content-type': 'text/plain' } }));
+    // 500 is not a relay-semantic status (403/502/503/504 are, see
+    // relay-connection-mode.test.ts), so the plaintext gateway body survives.
+    transport.mockResolvedValue(new Response('Internal Server Error', { status: 500, headers: { 'content-type': 'text/plain' } }));
 
     const response = await fetchConnection('https://relay.example.test/relay/host-a/api/session', { method: 'POST' }, relaySettings());
 
-    expect(response.status).toBe(502);
-    expect(await response.text()).toBe('Bad Gateway');
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe('Internal Server Error');
   });
 
   it('does not try to decrypt an empty body', async () => {

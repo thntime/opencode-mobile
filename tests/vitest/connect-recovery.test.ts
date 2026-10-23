@@ -49,6 +49,7 @@ async function fixture({ expired = false, missing = false, storedSession = true,
     'react-native': native, '@/lib/connect': connect, '@/lib/connection-scope': scope,
     '@/lib/connection-password': { getConnectionPassword: async () => '' }, '@/lib/storage-keys': keys,
     '@/lib/relay/types': { parseRelayAuth: () => undefined },
+    '@/lib/relay/refresh': { clearRelaySession: async () => {} },
     '@/lib/opencode/client/url': await loadTs('lib/opencode/client/url.ts', { './types': { defaultConnectionSettings: { serverUrl: 'http://localhost' } } }),
   }, globals);
   const profile = await profiles.saveConnectProfile(CP, claim);

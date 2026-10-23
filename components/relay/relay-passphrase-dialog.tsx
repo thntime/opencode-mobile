@@ -7,8 +7,44 @@ import { OverlaySheet } from '@/components/ui/overlay-sheet';
 import { TextInput } from '@/components/ui/text-input';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { isRelayE2EError, type RelayE2EErrorCode } from '@/lib/relay/errors';
 
-export type RelayPassphraseError = 'badPassphrase' | 'unavailable';
+// `unavailable` is the pre-classification name for a transport failure. Callers
+// may still report it; the dialog renders it as `network`.
+export type RelayPassphraseError = 'badPassphrase' | 'keyFormat' | 'network' | 'unauthorized' | 'unavailable';
+
+const CODE_TO_DIALOG_ERROR: Partial<Record<RelayE2EErrorCode, RelayPassphraseError>> = {
+  relay_e2e_bad_passphrase: 'badPassphrase',
+  relay_e2e_key_unavailable: 'keyFormat',
+  relay_e2e_unauthorized: 'unauthorized',
+  relay_e2e_unavailable: 'network',
+};
+
+function errorStatus(error: unknown): number | undefined {
+  if (isRelayE2EError(error)) return error.status;
+  const status = (error as { status?: unknown } | null | undefined)?.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+// Turns a Relay E2E failure into the four reasons the dialog can explain. The
+// code is authoritative, but a 5xx/throttled status means the Relay itself was
+// unreachable even when the key layer folded it into `key_unavailable`.
+export function mapRelayE2EErrorToDialogError(error: unknown): RelayPassphraseError {
+  const status = errorStatus(error);
+  if (status !== undefined && (status >= 500 || status === 408 || status === 429)) {
+    return 'network';
+  }
+  if (isRelayE2EError(error)) {
+    const mapped = CODE_TO_DIALOG_ERROR[error.code];
+    if (mapped) return mapped;
+  }
+  if (status === 401 || status === 403) return 'unauthorized';
+  return 'network';
+}
+
+function dialogErrorKey(error: RelayPassphraseError): Exclude<RelayPassphraseError, 'unavailable'> {
+  return error === 'unavailable' ? 'network' : error;
+}
 
 // One-shot E2E passphrase prompt shown between host selection and navigation.
 // A wrong passphrase keeps the dialog open (never falls back to plaintext);
@@ -71,7 +107,7 @@ export function RelayPassphraseDialog({
           onSubmitEditing={() => void submit()}
         />
         {error ? (
-          <HelperText testID="relay-passphrase-error" type="error" visible>{t(`relay:unlock.${error}`)}</HelperText>
+          <HelperText testID="relay-passphrase-error" type="error" visible>{t(`relay:unlock.${dialogErrorKey(error)}`)}</HelperText>
         ) : null}
         <View style={styles.actions}>
           <Button

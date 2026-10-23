@@ -7,6 +7,7 @@ import { parseWorkspaces, WORKSPACES_STORAGE_KEY } from '@/providers/workspace-s
 import { getConnectionPassword } from '@/lib/connection-password';
 import { getConnectCredentialError, getConnectTestSecret, parseConnectMetadata, setConnectTestSecret, type ConnectMetadata } from '@/lib/connect';
 import { getConnectionScope, type ConnectionIdentity } from '@/lib/connection-scope';
+import { clearRelaySession } from '@/lib/relay/refresh';
 import { parseRelayAuth, type RelayAuth } from '@/lib/relay/types';
 import { CONNECTION_PROFILES_STORAGE_KEY, SETTINGS_STORAGE_KEY } from '@/lib/storage-keys';
 import type { ChatPreferences } from '@/providers/opencode-preferences';
@@ -121,6 +122,17 @@ export function toConnectionProfile(value: unknown): ConnectionProfile | undefin
 
 export function findProfileByConnectionScope(profiles: ConnectionProfile[], connectionScope: string) {
   return profiles.find((profile) => getConnectionScope(profile) === connectionScope);
+}
+
+/**
+ * Connection types are mutually exclusive: leaving Relay mode (switching to a
+ * direct profile, or removing the Relay connection) must drop everything that
+ * belonged to that Relay session — the account token, the host keys, the E2E
+ * passphrase and the persisted hostId — so no later request can target a stale
+ * relay host. Callers also clear the in-memory `relay` block.
+ */
+export async function clearRelayConnectionState() {
+  await clearRelaySession();
 }
 
 export function findMatchingProfile(profiles: ConnectionProfile[], identity: ConnectionIdentity & { connect?: ConnectMetadata }) {

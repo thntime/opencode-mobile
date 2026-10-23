@@ -97,7 +97,31 @@ describe('architecture ratchets', () => {
           function visit(node: ts.Node) {
             if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) && node.tagName.getText(ast) === 'KeyboardAvoidingView') {
               const behavior = node.attributes.properties.find((prop): prop is ts.JsxAttribute => ts.isJsxAttribute(prop) && prop.name.getText(ast) === 'behavior')?.initializer;
-              assert.equal((behavior as ts.StringLiteral | undefined)?.text, 'padding', `${file}: keyboard avoidance must use padding on all platforms`);
+              if (behavior && ts.isJsxExpression(behavior) && behavior.expression) {
+                // A platform branch is allowed only when Android shrinks the
+                // container (height) and every other platform keeps padding.
+                let expression = behavior.expression.getText(ast);
+                if (ts.isIdentifier(behavior.expression)) {
+                  const name = behavior.expression.text;
+                  const resolveInitializer = (node: ts.Node): string | undefined => {
+                    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+                      return node.initializer?.getText(ast);
+                    }
+                    let found: string | undefined;
+                    ts.forEachChild(node, (child) => {
+                      if (found) return;
+                      found = resolveInitializer(child);
+                    });
+                    return found;
+                  };
+                  expression = resolveInitializer(ast) ?? expression;
+                }
+                assert.match(expression, /Platform\.OS\s*===\s*['"]android['"]/, `${file}: platform branch must key off Platform.OS`);
+                assert.match(expression, /['"]height['"]/, `${file}: Android must shrink the container (height)`);
+                assert.match(expression, /['"]padding['"]/, `${file}: other platforms must keep padding`);
+              } else {
+                assert.equal((behavior as ts.StringLiteral | undefined)?.text, 'padding', `${file}: keyboard avoidance must use padding on all platforms`);
+              }
               keyboardSurfaces += 1;
             }
             ts.forEachChild(node, visit);

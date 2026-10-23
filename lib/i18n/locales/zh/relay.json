@@ -41,6 +41,9 @@
     "passphrase": "口令",
     "submit": "解锁并连接",
     "badPassphrase": "口令错误，请重试。",
+    "keyFormat": "Relay 返回的加密密钥无法使用，请返回电脑列表重试。",
+    "network": "网络异常，无法连接到 Relay，请检查网络后重试。",
+    "unauthorized": "Relay 拒绝了该账号的访问，请重新登录。",
     "unavailable": "无法连接到 Relay，请检查后重试。"
   }
 }

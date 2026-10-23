@@ -15,6 +15,7 @@ import {
   unwrapHostKey,
 } from '@/lib/relay/keywrap';
 import { isRelayReauthRequired, resetRelayRefreshState } from '@/lib/relay/refresh';
+import { clearRelayLoginRequired, relayLoginRequired } from '@/lib/relay/guard';
 import { clearPassphrase, getPassphrase, setPassphrase } from '@/lib/relay/session-key';
 import { clearRelaySessionPassword, setRelaySessionPassword } from '@/lib/relay/session-password';
 
@@ -59,12 +60,14 @@ beforeEach(async () => {
   resetRelayRefreshState();
   clearRelaySessionPassword();
   await clearRelayToken();
+  clearRelayLoginRequired();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   resetRelayRefreshState();
   clearRelaySessionPassword();
+  clearRelayLoginRequired();
 });
 
 describe('relay host key unwrapping', () => {
@@ -128,13 +131,19 @@ describe('relay host key fetch', () => {
     expect(transport).toHaveBeenCalledTimes(3);
   });
 
-  it('propagates relay_reauth_required when no password can refresh the session', async () => {
+  it('asks for the account password again when no password can refresh the session', async () => {
     const transport = vi.fn(async () => respond({ error: 'nope' }, 401));
     vi.stubGlobal('fetch', transport);
 
     const error = await fetchHostKey('https://relay.example.test', 'host-a', 'jwt', 'alice@example.test').catch((reason: unknown) => reason);
 
-    expect(isRelayReauthRequired(error)).toBe(true);
+    // D3: a lost in-memory password is not a rejected credential. The unlock
+    // flow reports a key-fetch failure, but the session survives and the guard
+    // is signalled to ask for the password again instead of signing out.
+    expect(isRelayReauthRequired(error)).toBe(false);
+    expect(isRelayE2EError(error)).toBe(true);
+    expect((error as { code?: string }).code).toBe('relay_e2e_key_unavailable');
+    expect(relayLoginRequired()).toBe(true);
     expect(transport).toHaveBeenCalledTimes(1);
   });
 

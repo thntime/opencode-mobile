@@ -3,8 +3,9 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import { recordBytes, recordRequest } from '../data-usage';
 import { getConnectCredentialError } from '@/lib/connect';
+import { isRelayConnectionTarget } from '@/lib/relay/connection-mode';
 import { decryptRelayResponse, encryptRelayRequest, relayHostKeyFor } from '@/lib/relay/fetch-e2e';
-import { RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayTokenExpiryHint } from '@/lib/relay/refresh';
+import { RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayRefreshError, relayTokenExpiryHint } from '@/lib/relay/refresh';
 import { cachedRelayToken } from '@/lib/relay/token-cache';
 import { joinUrlPath } from './url';
 import type { OpencodeConnectionSettings } from './types';
@@ -59,7 +60,7 @@ async function relayRequestInit(relay: RelayAuth, init?: RequestInit): Promise<R
   const expiresAt = decodeTokenExpiry(token) ?? relayTokenExpiryHint(token, relay.tokenExpiresAt);
   if (!isRelayTokenExpiring(expiresAt)) return withAuthorization(init, token);
   const result = await refreshRelayToken(relay.relayUrl, relay.account);
-  if (result.status !== 'refreshed') throw new RelayReauthRequiredError(result.reason);
+  if (result.status !== 'refreshed') throw relayRefreshError(result.reason);
   return withAuthorization(init, result.token);
 }
 
@@ -75,7 +76,7 @@ function isReplayableInit(init?: RequestInit) {
 
 async function replayRelayInit(relay: RelayAuth, init?: RequestInit): Promise<RequestInit | undefined> {
   const result = await refreshRelayToken(relay.relayUrl, relay.account);
-  if (result.status !== 'refreshed') throw new RelayReauthRequiredError(result.reason);
+  if (result.status !== 'refreshed') throw relayRefreshError(result.reason);
   if (!isReplayableInit(init)) return undefined;
   return withAuthorization(init, result.token);
 }
@@ -99,6 +100,12 @@ async function normalizeRequestInput(input: RequestInfo | URL, init?: RequestIni
 }
 
 export async function fetchConnection(input: RequestInfo | URL, init?: RequestInit, settings?: OpencodeConnectionSettings) {
+  // D2: in Relay mode the request target is derived from the `relay` block
+  // alone. A leftover direct address (or the empty URL right after signing in)
+  // must fail before the bearer token can reach it.
+  if (settings?.relay && !isRelayConnectionTarget(settings.serverUrl, settings.relay)) {
+    throw new Error('Select a Relay host first. No request was sent.');
+  }
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   init = await normalizeRequestInput(input, init);
   if (settings?.connect) {
@@ -134,6 +141,16 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
     if (received.status === 401) {
       await clearRelaySession();
       throw new RelayReauthRequiredError('rejected', true);
+    }
+  }
+  // D4: relay status codes are translated here, before the generic
+  // `errors.ts` mapping can turn them into "OpenCode endpoint not found".
+  if (settings?.relay) {
+    if (received.status === 403) {
+      throw new Error('Relay 拒绝了该账号的访问（403）');
+    }
+    if (received.status === 502 || received.status === 503 || received.status === 504) {
+      throw new Error(`Relay 上游不可达（${received.status}）`);
     }
   }
   const response = hostKey ? await decryptRelayResponse(received, hostKey) : received;

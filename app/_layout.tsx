@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { DarkTheme, DefaultTheme, Redirect, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -17,7 +17,7 @@ import { installGlobalErrorHandler } from '@/lib/error-reporting';
 import '@/lib/i18n';
 import { isConnectEnabled } from '@/lib/connect';
 import { getRelayToken } from '@/lib/relay/auth';
-import { relayRouteTarget } from '@/lib/relay/guard';
+import { relayRouteTarget, relayLoginRequired, subscribeRelayLoginRequired } from '@/lib/relay/guard';
 import { isHostUnlocked } from '@/lib/relay/host-key-cache';
 import type { RelayAuth } from '@/lib/relay/types';
 import { useConnection, useOnboarding, useUpdates } from '@/providers/opencode-contexts';
@@ -114,6 +114,10 @@ function RootNavigator() {
     return () => { cancelled = true; };
   }, [relay]);
   const hasRelayToken = relay && tokenCheck?.relay === relay ? tokenCheck.hasToken : undefined;
+  // D3: the refresh module keeps the session when it only lost the in-memory
+  // password, so the guard needs its own signal to route back to /relay-login
+  // (the persisted relayUrl/account stay in settings for form pre-fill).
+  const relayNeedsLogin = useSyncExternalStore(subscribeRelayLoginRequired, relayLoginRequired, relayLoginRequired);
 
   useEffect(() => {
     if (isHydrated) {
@@ -133,7 +137,7 @@ function RootNavigator() {
   // Direct connections have no `relay` block and are never redirected; during
   // onboarding the connect step drives relay navigation explicitly.
   const relayTarget = onboardingCompleted && relay && hasRelayToken !== undefined
-    ? relayRouteTarget(relay, hasRelayToken, relay.hostId ? isHostUnlocked(relay.hostId) : false)
+    ? relayRouteTarget(relay, hasRelayToken, relay.hostId ? isHostUnlocked(relay.hostId) : false, relayNeedsLogin)
     : undefined;
 
   return (

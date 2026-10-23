@@ -313,6 +313,28 @@ Persisted values:
 - `opencode-mobile.sessions.<connectionScope>.<projectPath>` / `opencode-mobile.session-statuses.<connectionScope>.<projectPath>` (per connection + project cache)
 - `opencode-mobile.favorite-sessions` (cross-project favorites, each carrying its connection scope)
 
+### Connection type exclusivity
+
+`opencode-mobile.settings` carries exactly one connection type. A `relay` block
+means Relay mode; its absence means a direct (or Cloud Link) connection. The two
+never share a request target.
+
+- entering Relay mode writes the `relay` block and clears `serverUrl`, `connect`,
+  `username` and `password` in the same update (`relayModeSettings` in
+  `lib/relay/connection-mode.ts`, called by `app/relay-login.tsx`). `serverUrl`
+  stays empty until a host is picked, then `lib/relay/url.ts` writes
+  `{relayUrl}/relay/{hostId}`.
+- `lib/opencode/client/fetch.ts` re-checks that invariant before every request
+  (`isRelayConnectionTarget`): a Relay-mode `serverUrl` that is not
+  `{relayUrl}/relay/{hostId}` throws "select a Relay host" and sends nothing.
+  This is the second lock for restored backups, deleted profiles and upgraded
+  installs, where a stale direct address can survive.
+- switching to a direct profile (`switchConnection` in
+  `providers/use-connection-connect-actions.ts`) clears the `relay` block and
+  calls `clearRelayConnectionState()` (`lib/connection-profiles.ts`), which drops
+  the account token, the host keys, the E2E passphrase and the persisted hostId.
+  Switching between Relay hosts keeps the session and only rewrites `hostId`.
+
 ### Session cache DTO
 
 The per connection + project session cache never stores raw SDK `Session` objects. It writes

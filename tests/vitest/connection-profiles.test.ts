@@ -86,6 +86,7 @@ describe('connection profiles', () => {
       [/from '@\/lib\/storage-keys'/g, `from "${storageKeysUri}"`],
     ]);
     const workspaceStubUri = `data:text/javascript,${encodeURIComponent("export const WORKSPACES_STORAGE_KEY = 'opencode-mobile.workspaces'; export const parseWorkspaces = JSON.parse;")}`;
+    const relayRefreshStubUri = `data:text/javascript,${encodeURIComponent('export async function clearRelaySession() {}')}`;
     const connectionProfilesUri = await transpileToDataUri('lib/connection-profiles.ts', [
       [/from '@\/providers\/workspace-storage'/g, `from "${workspaceStubUri}"`],
       [/from '@\/lib\/opencode\/client\/url'/g, `from "${urlUri}"`],
@@ -97,6 +98,7 @@ describe('connection profiles', () => {
       [/from '@\/lib\/connection-password'/g, `from "${connectionPasswordUri}"`],
       [/from '@\/lib\/connection-scope'/g, `from "${connectionScopeUri}"`],
       [/from '@\/lib\/relay\/types'/g, `from "${relayTypesUri}"`],
+      [/from '@\/lib\/relay\/refresh'/g, `from "${relayRefreshStubUri}"`],
       [/from '@\/lib\/storage-keys'/g, `from "${storageKeysUri}"`],
     ]);
 

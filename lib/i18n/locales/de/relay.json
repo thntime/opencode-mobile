@@ -41,6 +41,9 @@
     "passphrase": "Passphrase",
     "submit": "Entsperren und verbinden",
     "badPassphrase": "Die Passphrase ist falsch. Versuche es erneut.",
+    "keyFormat": "Der Relay hat einen unbrauchbaren Verschlüsselungsschlüssel geliefert. Versuche es in der Computerliste erneut.",
+    "network": "Der Relay ist nicht erreichbar. Überprüfe deine Netzwerkverbindung und versuche es erneut.",
+    "unauthorized": "Der Relay hat den Zugriff für dieses Konto abgelehnt. Melde dich erneut an.",
     "unavailable": "Der Relay ist nicht erreichbar. Überprüfe ihn und versuche es erneut."
   }
 }

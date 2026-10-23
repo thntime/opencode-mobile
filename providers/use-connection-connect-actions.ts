@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
 import {
+  clearRelayConnectionState,
   findMatchingProfile,
   loadConnectionProfiles,
   pickModelPreferences,
@@ -128,6 +129,14 @@ export function useConnectionConnectActions({
       const failed: ConnectionState = { status: 'error', message: credentialError, kind: 'auth', checkedAt: Date.now() };
       setConnection(failed);
       return failed;
+    }
+    // D2: Relay mode without a selected host has no request target at all.
+    // Report "select a host" instead of an invalid URL, and let the guard keep
+    // the user on /relay-hosts.
+    if (targetSettings.relay && !targetSettings.relay.hostId) {
+      const idle: ConnectionState = { status: 'idle', message: 'Select a Relay host to connect.', checkedAt: Date.now() };
+      setConnection(idle);
+      return idle;
     }
     if (!isValidServerUrl(targetSettings.serverUrl)) {
       const failed: ConnectionState = {
@@ -277,6 +286,19 @@ export function useConnectionConnectActions({
     if (current.relay && kind === 'auth') {
       const result = await refreshRelayToken(current.relay.relayUrl, current.relay.account);
       if (result.status === 'refreshed') return true;
+      // D3: a missing password or an unreachable Relay is not a rejected
+      // credential. Keep the host selection; the guard asks for the password
+      // (the refresh module marks it) or the retryable network error is shown.
+      if (result.reason === 'missing_password') return false;
+      if (result.reason === 'unreachable') {
+        setConnection({
+          status: 'error',
+          kind: 'offline',
+          message: 'Could not reach the Relay. Check your network and try again.',
+          checkedAt: Date.now(),
+        });
+        return false;
+      }
       dropRelayHost();
       return false;
     }
@@ -344,17 +366,26 @@ export function useConnectionConnectActions({
   ) => {
     await captureActiveProfilePreferences().catch(() => undefined);
 
+    // D1/D2: a target without a `relay` block is a direct connection. Drop the
+    // Relay session and its persisted host selection before the new target is
+    // written, so nothing keeps pointing at the old relay host.
+    const leavingRelay = Boolean(settingsRef.current.relay) && !next.relay;
+    if (leavingRelay) await clearRelayConnectionState();
+
     const connectMetadata = next.connect ?? findMatchingProfile(await loadConnectionProfiles(), next)?.connect;
     const targetSettings: OpencodeConnectionSettings = {
       ...settingsRef.current,
       ...next,
       connect: connectMetadata,
+      // `relay` is not part of `next`'s required keys: write it explicitly so a
+      // direct switch actually removes the block instead of inheriting it.
+      relay: next.relay,
     };
     if (connectMetadata && settingsRef.current.connect?.controlPlaneUrl === connectMetadata.controlPlaneUrl
       && settingsRef.current.connect.machineId === connectMetadata.machineId) {
       return runConnect(targetSettings);
     }
-    updateSettings({ ...next, connect: connectMetadata });
+    updateSettings({ ...next, connect: connectMetadata, relay: next.relay });
     settingsRef.current = targetSettings;
     if (modelPreferences) {
       setChatPreferences((current) => ({ ...current, ...modelPreferences }));

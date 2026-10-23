@@ -41,6 +41,9 @@
     "passphrase": "Phrase secrète",
     "submit": "Déverrouiller et se connecter",
     "badPassphrase": "La phrase secrète est incorrecte. Réessayez.",
+    "keyFormat": "Le Relay a renvoyé une clé de chiffrement inutilisable. Réessayez depuis la liste des ordinateurs.",
+    "network": "Impossible de joindre le Relay. Vérifiez votre réseau puis réessayez.",
+    "unauthorized": "Le Relay a refusé l'accès à ce compte. Reconnectez-vous.",
     "unavailable": "Impossible de joindre le Relay. Vérifiez-le puis réessayez."
   }
 }

@@ -61,6 +61,7 @@ describe('local pairing', () => {
       '../data-usage': { recordBytes: () => {}, recordRequest: () => {} },
       '@/lib/connect': { getConnectCredentialError: () => undefined }, './url': {},
       '@/lib/relay/token-cache': { cachedRelayToken: () => undefined },
+      '@/lib/relay/connection-mode': { isRelayConnectionTarget: () => true },
       '@/lib/relay/refresh': { RelayReauthRequiredError: class extends Error {}, clearRelaySession: async () => undefined, refreshRelayToken: async () => ({ status: 'needs_reauth' }), relayTokenExpiryHint: () => undefined },
       '@/lib/relay/fetch-e2e': { relayHostKeyFor: () => undefined, encryptRelayRequest: async (init: RequestInit | undefined) => init, decryptRelayResponse: async (response: Response) => response },
     }, { fetch: async () => response });
@@ -83,6 +84,7 @@ describe('local pairing', () => {
       '../data-usage': { recordBytes: () => {}, recordRequest: () => {} },
       '@/lib/connect': { getConnectCredentialError: () => undefined }, './url': {},
       '@/lib/relay/token-cache': { cachedRelayToken: () => undefined },
+      '@/lib/relay/connection-mode': { isRelayConnectionTarget: () => true },
       '@/lib/relay/refresh': { RelayReauthRequiredError: class extends Error {}, clearRelaySession: async () => undefined, refreshRelayToken: async () => ({ status: 'needs_reauth' }), relayTokenExpiryHint: () => undefined },
       '@/lib/relay/fetch-e2e': { relayHostKeyFor: () => undefined, encryptRelayRequest: async (init: RequestInit | undefined) => init, decryptRelayResponse: async (response: Response) => response },
     }, { fetch: manualFetch });

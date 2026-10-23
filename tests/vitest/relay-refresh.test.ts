@@ -4,11 +4,14 @@ import { fetchConnection } from '@/lib/opencode/client/fetch';
 import { decryptBody } from '@/lib/relay/crypto';
 import { clearHostKeys, getHostKey, setHostKey } from '@/lib/relay/keywrap';
 import {
+  RelayLoginRequiredError,
   RelayReauthRequiredError,
+  RelayUnreachableError,
   clearRelaySession,
   refreshRelayToken,
   resetRelayRefreshState,
 } from '@/lib/relay/refresh';
+import { clearRelayLoginRequired, relayLoginRequired } from '@/lib/relay/guard';
 import { clearPassphrase, getPassphrase, setPassphrase } from '@/lib/relay/session-key';
 import { clearRelaySessionPassword, setRelaySessionPassword } from '@/lib/relay/session-password';
 import { clearRelayToken, getRelayToken } from '@/lib/relay/auth';
@@ -16,7 +19,7 @@ import { buildRelayServerUrl } from '@/lib/relay/url';
 import type { OpencodeConnectionSettings } from '@/lib/opencode/client/types';
 
 const counters = vi.hoisted(() => ({ recordBytes: vi.fn(), recordRequest: vi.fn() }));
-const h = vi.hoisted(() => ({ secure: new Map<string, string>(), storage: new Map<string, string>() }));
+const h = vi.hoisted(() => ({ secure: new Map<string, string>(), storage: new Map<string, string>(), tokenDeletes: 0 }));
 
 vi.mock('@/lib/opencode/data-usage', () => counters);
 vi.mock('@/lib/connect', () => ({ getConnectCredentialError: () => undefined }));
@@ -26,7 +29,12 @@ vi.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'when-unlocked-this-device-only',
   getItemAsync: async (key: string) => h.secure.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => { h.secure.set(key, value); },
-  deleteItemAsync: async (key: string) => { h.secure.delete(key); },
+  deleteItemAsync: async (key: string) => {
+    // One token delete == one `clearRelaySession()`: the session cleanup always
+    // goes through `clearRelayToken`.
+    if (key === 'opencode-mobile.relay-token') h.tokenDeletes += 1;
+    h.secure.delete(key);
+  },
 }));
 vi.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -87,12 +95,15 @@ beforeEach(async () => {
   resetRelayRefreshState();
   clearRelaySessionPassword();
   await clearRelayToken();
+  clearRelayLoginRequired();
+  h.tokenDeletes = 0;
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   resetRelayRefreshState();
   clearRelaySessionPassword();
+  clearRelayLoginRequired();
 });
 
 describe('refreshRelayToken', () => {
@@ -121,9 +132,13 @@ describe('refreshRelayToken', () => {
 
     expect(result).toEqual({ status: 'needs_reauth', reason: 'missing_password' });
     expect(transport).not.toHaveBeenCalled();
-    // The stale token and host selection are gone, so the guard can route back.
-    expect(await getRelayToken()).toBeUndefined();
-    expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toEqual({ relayUrl: RELAY_URL, account: ACCOUNT });
+    // D3: a missing in-memory password is not a rejected credential. The token,
+    // the host selection and the key material all survive; only the root guard
+    // learns that the account password has to be entered again.
+    expect(await getRelayToken()).toBe('stale-token');
+    expect(h.tokenDeletes).toBe(0);
+    expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toMatchObject({ hostId: 'host-a' });
+    expect(relayLoginRequired()).toBe(true);
   });
 
   it('turns a rejected sign-in into needs_reauth and clears the persisted session', async () => {
@@ -169,6 +184,76 @@ describe('refreshRelayToken', () => {
     expect(getPassphrase()).toBeUndefined();
     expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toEqual({ relayUrl: RELAY_URL, account: ACCOUNT });
   });
+});
+
+describe('refresh failure classification', () => {
+  // D3: the failure reason decides the error type and whether the session is
+  // destroyed. Only a credential the Relay actually rejected may sign out.
+  const cases = [
+    {
+      reason: 'missing_password' as const,
+      error: RelayLoginRequiredError,
+      code: 'relay_login_required',
+      clears: 0,
+      password: undefined,
+      transport: () => { throw new TypeError('unused'); },
+      loginCalls: 0,
+    },
+    {
+      reason: 'unreachable' as const,
+      error: RelayUnreachableError,
+      code: 'relay_unreachable',
+      clears: 0,
+      password: 'secret',
+      transport: () => { throw new TypeError('Network request failed'); },
+      loginCalls: 1,
+    },
+    {
+      reason: 'invalid_credentials' as const,
+      error: RelayReauthRequiredError,
+      code: 'relay_reauth_required',
+      clears: 1,
+      password: 'wrong',
+      transport: () => json({ error: 'invalid email or password' }, 401),
+      loginCalls: 1,
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(`maps ${testCase.reason} to ${testCase.error.name} (${testCase.clears} session clear)`, async () => {
+      if (testCase.password) setRelaySessionPassword(testCase.password);
+      h.secure.set(TOKEN_KEY, 'expiring-token');
+      setHostKey('host-a', new Uint8Array(32).fill(9));
+      setPassphrase('unlock-me');
+      persistSettings();
+      const transport = vi.fn(async () => testCase.transport());
+      vi.stubGlobal('fetch', transport);
+
+      const error = await fetchConnection(
+        `${RELAY_URL}/relay/host-a/api/info`,
+        undefined,
+        relaySettings({ relay: { relayUrl: RELAY_URL, account: ACCOUNT, hostId: 'host-a', tokenExpiresAt: Date.now() - 1 } }),
+      ).catch((reason: unknown) => reason);
+
+      expect(error).toBeInstanceOf(testCase.error);
+      expect((error as { code?: string }).code).toBe(testCase.code);
+      expect((error as { reason?: string }).reason).toBe(testCase.reason);
+      expect(transport).toHaveBeenCalledTimes(testCase.loginCalls);
+      expect(h.tokenDeletes).toBe(testCase.clears);
+      if (testCase.clears === 0) {
+        expect(await getRelayToken()).toBe('expiring-token');
+        expect(getHostKey('host-a')).toBeDefined();
+        expect(getPassphrase()).toBe('unlock-me');
+        expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toMatchObject({ hostId: 'host-a' });
+      } else {
+        expect(await getRelayToken()).toBeUndefined();
+        expect(getHostKey('host-a')).toBeUndefined();
+        expect(getPassphrase()).toBeUndefined();
+        expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toEqual({ relayUrl: RELAY_URL, account: ACCOUNT });
+      }
+      expect(relayLoginRequired()).toBe(testCase.reason === 'missing_password');
+    });
+  }
 });
 
 describe('fetchConnection relay refresh', () => {
@@ -288,10 +373,14 @@ describe('fetchConnection relay refresh', () => {
       relaySettings({ relay: { relayUrl: RELAY_URL, account: ACCOUNT, hostId: 'host-a', tokenExpiresAt: Date.now() - 1 } }),
     ).catch((reason: unknown) => reason);
 
-    expect(error).toBeInstanceOf(RelayReauthRequiredError);
-    expect((error as RelayReauthRequiredError).reason).toBe('missing_password');
+    expect(error).toBeInstanceOf(RelayLoginRequiredError);
+    expect((error as RelayLoginRequiredError).code).toBe('relay_login_required');
+    expect((error as RelayLoginRequiredError).reason).toBe('missing_password');
     expect(transport).not.toHaveBeenCalled();
-    expect(await getRelayToken()).toBeUndefined();
+    // The persisted token is still valid: do not sign the user out or drop the
+    // host just because the process lost the in-memory password.
+    expect(await getRelayToken()).toBe('expiring-token');
+    expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toMatchObject({ hostId: 'host-a' });
   });
 
   it('replays an encrypted body without encrypting it a second time', async () => {

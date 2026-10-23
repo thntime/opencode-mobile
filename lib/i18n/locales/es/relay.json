@@ -41,6 +41,9 @@
     "passphrase": "Frase de contraseña",
     "submit": "Desbloquear y conectar",
     "badPassphrase": "La frase de contraseña es incorrecta. Inténtalo de nuevo.",
+    "keyFormat": "El Relay envió una clave de cifrado no válida. Inténtalo de nuevo desde la lista de ordenadores.",
+    "network": "No se pudo contactar con el Relay. Comprueba tu red e inténtalo de nuevo.",
+    "unauthorized": "El Relay rechazó el acceso de esta cuenta. Inicia sesión de nuevo.",
     "unavailable": "No se pudo contactar con el Relay. Compruébalo e inténtalo de nuevo."
   }
 }

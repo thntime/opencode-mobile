@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { relayRouteTarget } from '@/lib/relay/guard';
+import { clearRelayLoginRequired, markRelayLoginRequired, relayLoginRequired, relayRouteTarget } from '@/lib/relay/guard';
 
 // Navigation contract from the design's Testing Strategy: each startup state
 // lands on exactly one surface, and direct connections are never redirected.
@@ -23,5 +23,25 @@ describe('relay route guard', () => {
 
   it('lets a fully configured relay session fall through to the tabs', () => {
     expect(relayRouteTarget({ ...base, hostId: 'host-1', hostName: 'Workstation' }, true)).toBeUndefined();
+  });
+
+  // D3: losing the in-memory password no longer clears the token, so the guard
+  // needs an explicit signal to send the user back for the account password.
+  it('routes to relay-login when the session needs the account password again', () => {
+    expect(relayRouteTarget({ ...base, hostId: 'host-1' }, true, true, true)).toBe('/relay-login');
+    expect(relayRouteTarget({ ...base, hostId: 'host-1' }, false, false, true)).toBe('/relay-login');
+  });
+
+  it('never redirects direct connections even when the signal is stale', () => {
+    expect(relayRouteTarget(undefined, true, true, true)).toBeUndefined();
+  });
+
+  it('keeps the signal out of the way until a refresh asks for the password', () => {
+    clearRelayLoginRequired();
+    expect(relayLoginRequired()).toBe(false);
+    markRelayLoginRequired();
+    expect(relayLoginRequired()).toBe(true);
+    clearRelayLoginRequired();
+    expect(relayLoginRequired()).toBe(false);
   });
 });

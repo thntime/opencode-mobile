@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RelayLoginForm, type RelayLoginValues } from '@/components/relay/relay-login-form';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { relayModeSettings } from '@/lib/relay/connection-mode';
+import { clearRelayLoginRequired } from '@/lib/relay/guard';
 import { normalizeRelayUrl } from '@/lib/relay/url';
 import { useConnection, useOnboarding } from '@/providers/opencode-contexts';
 
@@ -23,9 +25,16 @@ export default function RelayLoginScreen() {
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(values: RelayLoginValues) {
-    updateSettings({
-      relay: { relayUrl: normalizeRelayUrl(values.relayUrl), account: values.account, tokenExpiresAt: values.tokenExpiresAt },
-    });
+    // D1: Relay and direct connections are mutually exclusive. The same write
+    // that installs the `relay` block drops the direct address and credentials,
+    // so no request can keep using the previous direct server.
+    updateSettings(relayModeSettings({
+      relayUrl: normalizeRelayUrl(values.relayUrl),
+      account: values.account,
+      tokenExpiresAt: values.tokenExpiresAt,
+    }));
+    // A fresh sign-in satisfies the guard's "enter the password again" signal.
+    clearRelayLoginRequired();
     router.replace('/relay-hosts');
   }
 
@@ -50,6 +59,7 @@ export default function RelayLoginScreen() {
           <Text variant="bodyMedium" style={{ color: palette.muted }}>{t('relay:login.subtitle')}</Text>
           <RelayLoginForm
             initialRelayUrl={settings.relay?.relayUrl ?? 'https://'}
+            initialAccount={settings.relay?.account ?? ''}
             onBusyChange={setBusy}
             onSubmit={handleSubmit}
             onScan={goBack}

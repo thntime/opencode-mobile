@@ -1,7 +1,7 @@
 import { useContext, type ReactNode } from 'react';
 import { WorkspaceScope, WorkspaceScopeContext } from '@/providers/workspace-context';
 import { useTranslation } from 'react-i18next';
-import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { Icon, Portal, Text } from 'react-native-paper';
 import Animated from 'react-native-reanimated';
@@ -44,8 +44,12 @@ export function OverlaySheet({ visible, title, onClose, children, headerAction, 
     return null;
   }
 
+  // Android runs with `adjustResize`, so shrinking the container height keeps
+  // the bottom-anchored sheet directly above the keyboard. iOS needs padding.
+  const keyboardBehavior = Platform.OS === 'android' ? 'height' : 'padding';
+
   const content = (
-      <KeyboardAvoidingView behavior="padding" style={[styles.overlay, { paddingTop: compact ? Math.max(64 + insets.top, height * 0.45) : 64 + insets.top }]} testID={testID}>
+      <KeyboardAvoidingView behavior={keyboardBehavior} style={[styles.overlay, { paddingTop: compact ? Math.max(64 + insets.top, height * 0.45) : 64 + insets.top }]} testID={testID}>
         {dismissible ? <Pressable accessibilityLabel={t('common:actions.closeWithName', { title })} onPress={onClose} style={StyleSheet.absoluteFill}>
           <Animated.View style={[styles.backdrop, backdropStyle]} />
         </Pressable> : null}

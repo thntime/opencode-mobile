@@ -41,6 +41,9 @@
     "passphrase": "Frase-senha",
     "submit": "Desbloquear e conectar",
     "badPassphrase": "A frase-senha está incorreta. Tente novamente.",
+    "keyFormat": "O Relay retornou uma chave de criptografia inutilizável. Tente novamente na lista de computadores.",
+    "network": "Não foi possível alcançar o Relay. Verifique sua rede e tente novamente.",
+    "unauthorized": "O Relay recusou o acesso desta conta. Entre novamente.",
     "unavailable": "Não foi possível alcançar o Relay. Verifique-o e tente novamente."
   }
 }

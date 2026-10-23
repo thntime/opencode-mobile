@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_STORAGE_KEY } from '@/lib/storage-keys';
 
 import { clearHostKeys } from './host-key-cache';
+import { clearRelayLoginRequired, markRelayLoginRequired } from './guard';
 import { clearPassphrase } from './session-key';
 import { clearRelaySessionPassword, getRelaySessionPassword } from './session-password';
 import type { RelayAuth } from './types';
@@ -36,9 +37,51 @@ export class RelayReauthRequiredError extends Error {
   }
 }
 
+// The process no longer holds the account password (relaunch, cleared session),
+// so the token cannot be refreshed in place. This is not a sign-out: the token,
+// the host selection and the key material all survive, and the root guard only
+// asks for the account password again.
+export class RelayLoginRequiredError extends Error {
+  readonly code = 'relay_login_required';
+
+  constructor(public readonly reason: RelayRefreshFailure = 'missing_password') {
+    super('The Relay needs your account password again. Enter it to continue.');
+    this.name = 'RelayLoginRequiredError';
+  }
+}
+
+// The Relay could not be reached at all (timeout, DNS, proxy). The session is
+// still valid, so this must never clear the token or drop the host.
+export class RelayUnreachableError extends Error {
+  readonly code = 'relay_unreachable';
+
+  constructor(public readonly reason: RelayRefreshFailure = 'unreachable') {
+    super('Could not reach the Relay. Check your network and try again.');
+    this.name = 'RelayUnreachableError';
+  }
+}
+
 export function isRelayReauthRequired(value: unknown): value is RelayReauthRequiredError {
   if (value instanceof RelayReauthRequiredError) return true;
   return typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'relay_reauth_required';
+}
+
+export function isRelayLoginRequired(value: unknown): value is RelayLoginRequiredError {
+  if (value instanceof RelayLoginRequiredError) return true;
+  return typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'relay_login_required';
+}
+
+export function isRelayUnreachable(value: unknown): value is RelayUnreachableError {
+  if (value instanceof RelayUnreachableError) return true;
+  return typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'relay_unreachable';
+}
+
+// The failure reason decides both the error type and whether the caller may
+// sign the user out. Only a rejected credential maps to `RelayReauthRequiredError`.
+export function relayRefreshError(reason: RelayRefreshFailure, replayed = false) {
+  if (reason === 'missing_password') return new RelayLoginRequiredError(reason);
+  if (reason === 'unreachable') return new RelayUnreachableError(reason);
+  return new RelayReauthRequiredError(reason, replayed);
 }
 
 // Concurrent 401s share one sign-in so a burst of requests cannot burn several
@@ -88,10 +131,10 @@ async function performRefresh(
     password = undefined;
   }
   if (!password) {
-    // No password in memory (relaunch, cleared session): nothing to send, and
-    // the user must sign in again. Clear the stale token so the root guard
-    // routes to /relay-login.
-    await clearRelaySession();
+    // No password in memory (relaunch, cleared session): nothing can be sent.
+    // D3: the persisted token may still be valid, so this must not clear the
+    // session or drop the host. The guard only asks for the password again.
+    markRelayLoginRequired();
     return { status: 'needs_reauth', reason: 'missing_password' };
   }
 
@@ -101,14 +144,18 @@ async function performRefresh(
     const { login } = await import('./auth');
     const result = await login(relayUrl, account, password);
     lastRefreshedToken = result.token;
+    clearRelayLoginRequired();
     return { status: 'refreshed', token: result.token, tokenExpiresAt: result.tokenExpiresAt };
   } catch (reason) {
     const code = typeof reason === 'object' && reason !== null ? (reason as { code?: unknown }).code : undefined;
-    await clearRelaySession();
-    return {
-      status: 'needs_reauth',
-      reason: typeof code === 'string' ? code as RelayRefreshFailure : 'unreachable',
-    };
+    const failure: RelayRefreshFailure = typeof code === 'string' ? code as RelayRefreshFailure : 'unreachable';
+    // D3: only a credential the Relay actually rejected may destroy the session.
+    // A network failure (`unreachable`) or a malformed response leaves the
+    // token and host selection intact.
+    if (failure === 'invalid_credentials' || failure === 'rejected') {
+      await clearRelaySession();
+    }
+    return { status: 'needs_reauth', reason: failure };
   }
 }
 
@@ -116,6 +163,9 @@ async function performRefresh(
 // selection. The account and Relay URL survive so the login screen can be
 // pre-filled, while the missing token makes the root guard show /relay-login.
 export async function clearRelaySession() {
+  // A cleared session can never be waiting for a password again: the guard's
+  // login-required signal is about a token that is still valid.
+  clearRelayLoginRequired();
   // Host keys and the E2E passphrase belong to the signed-in account. Clearing
   // them here keeps a later sign-in from reusing key material unlocked by the
   // previous session.

@@ -19,12 +19,14 @@ export type RelayLoginValues = {
 // onboarding and settings.
 export function RelayLoginForm({
   initialRelayUrl = 'https://',
+  initialAccount = '',
   onSubmit,
   onScan,
   onManual,
   onBusyChange,
 }: {
   initialRelayUrl?: string;
+  initialAccount?: string;
   onSubmit: (values: RelayLoginValues) => Promise<void> | void;
   onScan: () => void;
   onManual: () => void;
@@ -33,7 +35,7 @@ export function RelayLoginForm({
   const { t } = useTranslation();
   const palette = Colors[useColorScheme() ?? 'light'];
   const [relayUrl, setRelayUrl] = useState(initialRelayUrl);
-  const [account, setAccount] = useState('');
+  const [account, setAccount] = useState(initialAccount);
   const [password, setPassword] = useState('');
   const [busy, setBusyState] = useState(false);
   const [error, setError] = useState<RelayLoginError['code']>();
