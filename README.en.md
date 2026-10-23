@@ -183,6 +183,8 @@ npm run lint
 npm run typecheck
 ```
 
+Full pre-release checks: `npm run test:ci:static` (static checks and unit tests), plus `npm run test:fake-server:self` and `npm run test:e2e:web`.
+
 For architecture, testing, and release instructions:
 
 [**Read the development guide →**](docs/development.md)
@@ -197,7 +199,7 @@ Signing setup, release steps, and troubleshooting:
 
 ## Contributing
 
-Contributions are welcome:
+Contributions are welcome through the [issue tracker](https://github.com/zhangjinglei137/opencode-mobile/issues) and pull requests:
 
 - opening bug reports
 - proposing features

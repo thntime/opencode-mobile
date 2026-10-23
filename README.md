@@ -130,7 +130,7 @@ Tailscale、Cloudflare Tunnel 以及其他安全组网方式都可以。也可�
 
 ### 4. 连接 AI provider
 
-打开 **设置 → AI 与 provider → 添加 provider**，选择服务商；若提供多种登录方式，选择 **API key**，粘贴密钥并保存。配置完成后即可启用其模型，并在对话中选择。点击已配置的 provider 可以重新登录或替换密钥。
+打开 **设置 → AI 与提供商 → 添加提供商**，选择服务商；若提供多种登录方式，选择 **API key**，粘贴密钥并保存。配置完成后即可启用其模型，并在对话中选择。点击已配置的 provider 可以重新登录或替换密钥。
 
 provider 密钥保存在所连接的 OpenCode 服务器上。在 OpenCode 2 上，服务端的集成目录决定哪些 provider 支持 API key 或 OAuth 登录；只支持环境变量的 provider 需要在服务器上配置。
 
@@ -183,6 +183,8 @@ npm run lint
 npm run typecheck
 ```
 
+发版前跑完整检查：`npm run test:ci:static`（静态检查与单元测试），以及 `npm run test:fake-server:self`、`npm run test:e2e:web`。
+
 架构、测试与发布说明见：
 
 [**开发文档 →**](docs/development.md)
@@ -197,7 +199,7 @@ npm run typecheck
 
 ## 贡献
 
-欢迎提交 issue 与 pull request：
+欢迎通过 [issue tracker](https://github.com/zhangjinglei137/opencode-mobile/issues) 提交 issue 与 pull request：
 
 - 报告 bug
 - 提出功能建议
