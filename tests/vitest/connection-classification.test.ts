@@ -5,7 +5,7 @@ import {
   isRetryableConnectionFailure,
   isRetryableCloudLinkStartupError,
 } from '@/lib/opencode/client/errors';
-import { RelayHostAuthRequiredError } from '@/lib/relay/refresh';
+import { RelayForbiddenError, RelayHostAuthRequiredError } from '@/lib/relay/refresh';
 
 vi.mock('@/lib/opencode/client/types', () => ({ defaultConnectionSettings: { serverUrl: 'http://127.0.0.1:4096' } }));
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -45,6 +45,15 @@ describe('connection failure classification', () => {
     // credentials were rejected.
     expect(classifyConnectionFailure(new Error('Relay 拒绝了该账号的访问（401）'))).toBe('auth');
     expect(classifyConnectionFailure(new Error('主机要求认证（401）'))).toBe('auth');
+  });
+
+  it('separates a Relay account 403 from a rejected credential', () => {
+    const error = new RelayForbiddenError();
+    expect(error.code).toBe('relay_forbidden');
+    expect(classifyConnectionFailure(error)).toBe('forbidden');
+    // Not an auth failure: the selected host must survive and no sign-out is due.
+    expect(isAuthConnectionFailure('forbidden')).toBe(false);
+    expect(isRetryableConnectionFailure('forbidden')).toBe(false);
   });
 
   it('separates offline transitions from timeouts and protocol mismatches', () => {

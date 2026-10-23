@@ -199,6 +199,25 @@ export function useWorkspaceConnections(shell: OpencodeProviderState, hydrated: 
     if (selectWorkspace) { await pauseConversation(); select(target); }
     return runtime.values.connectionValue.connect();
   }, [change, ensure, pauseConversation, saveProfile, select]);
+  // Relay sign-in installs a dedicated registry entry instead of rewriting the
+  // focused direct connection. Keeping both lets the user return to their LAN
+  // profile later, and the relay entry (empty `serverUrl`, stable account
+  // identity) is what makes the signed-in state survive a relaunch.
+  const enterRelayMode = useCallback((value: OpencodeConnectionSettings) => {
+    canPersist.current = true;
+    const id = getConnectionUiScope(value);
+    const existing = records.current.find((entry) => entry.id === id);
+    const relay = value.relay;
+    const name = relay?.hostName ?? (relay ? getServerHostname(relay.relayUrl) || relay.relayUrl : 'Relay');
+    change((current) => existing
+      ? current.map((entry) => entry.id === id ? { ...entry, settings: value, enabled: true, events: createSharedEventStream() } : entry)
+      // Any other pending relay sign-in (different account or URL) is
+      // superseded; direct profiles are left untouched.
+      : [...current.filter((entry) => !(entry.settings.relay && !entry.settings.serverUrl)),
+          { id, name, settings: value, enabled: true, preferences: { autoApprove: false }, projects: [''], events: createSharedEventStream() }]);
+    select({ connectionId: id, projectPath: existing?.projects[0] ?? '' });
+    shellRef.current.setSettings(value);
+  }, [change, select]);
   const disconnect = useCallback(async (id: string) => {
     canPersist.current = true;
     for (const [key, runtime] of Object.entries(live.current)) if ((JSON.parse(key) as string[])[0] === id) {
@@ -248,5 +267,5 @@ export function useWorkspaceConnections(shell: OpencodeProviderState, hydrated: 
     change((current) => current.filter((entry) => entry.id !== id));
     for (const key of Object.keys(live.current)) if ((JSON.parse(key) as string[])[0] === id) forget(key);
   }, [change, disconnect, forget]);
-  return { isEnabled, closeProject, connectedWorkspace, removeConnection, connections, focus, snapshots, ready, change, select, publish, forget, ensure, resolveKey, activate, switchConnection, disconnect, retry, updateSettings, updatePreferences };
+  return { isEnabled, closeProject, connectedWorkspace, removeConnection, connections, focus, snapshots, ready, change, select, publish, forget, ensure, resolveKey, activate, switchConnection, enterRelayMode, disconnect, retry, updateSettings, updatePreferences };
 }

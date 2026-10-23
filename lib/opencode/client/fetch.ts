@@ -5,7 +5,7 @@ import { recordBytes, recordRequest } from '../data-usage';
 import { getConnectCredentialError } from '@/lib/connect';
 import { isRelayConnectionTarget } from '@/lib/relay/connection-mode';
 import { decryptRelayResponse, encryptRelayRequest, relayHostKeyFor } from '@/lib/relay/fetch-e2e';
-import { RelayHostAuthRequiredError, RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayRefreshError, relayTokenExpiryHint } from '@/lib/relay/refresh';
+import { RelayForbiddenError, RelayHostAuthRequiredError, RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayRefreshError, relayTokenExpiryHint } from '@/lib/relay/refresh';
 import { cachedRelayToken } from '@/lib/relay/token-cache';
 import { joinUrlPath } from './url';
 import type { OpencodeConnectionSettings } from './types';
@@ -48,6 +48,15 @@ function withAuthorization(init: RequestInit | undefined, token: string | undefi
   const headers = new Headers(init?.headers);
   headers.set('Authorization', `Bearer ${token}`);
   return { ...init, headers };
+}
+
+// Only an HTTP Basic challenge means the OpenCode host behind the Relay wants
+// its own credentials. Other schemes (for example a `Bearer` challenge from the
+// Relay itself) describe the Relay's own auth and must go through the normal
+// refresh/replay path.
+function isHostBasicChallenge(response: Response) {
+  const challenge = response.headers.get('www-authenticate');
+  return Boolean(challenge && /^\s*basic\b/i.test(challenge));
 }
 
 // D4: refresh inside the five-minute window before the request leaves. When the
@@ -130,12 +139,12 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
   let received = await send(preparedInit);
   recordRequest();
   if (settings?.relay && received.status === 401) {
-    // A challenge means the 401 came from the OpenCode host behind the Relay,
-    // not from the Relay itself: the host wants HTTP Basic and the tunnel
-    // client has no credentials for it. That is a host-side configuration
-    // problem, so the Relay session and the selected host must survive it.
-    const upstreamChallenge = received.headers.get('www-authenticate');
-    if (upstreamChallenge) {
+    // A Basic challenge means the 401 came from the OpenCode host behind the
+    // Relay, not from the Relay itself: the host wants HTTP Basic and the
+    // tunnel client has no credentials for it. That is a host-side
+    // configuration problem, so the Relay session and the selected host must
+    // survive it.
+    if (isHostBasicChallenge(received)) {
       throw new RelayHostAuthRequiredError();
     }
     // One refresh and one replay. A second 401 means the fresh token is also
@@ -150,7 +159,7 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
       // The replay carried a freshly minted Relay token, so a challenge now can
       // only come from the OpenCode host behind the Relay. Keep the session;
       // only a plain 401 means the Relay rejected the new token too.
-      if (received.headers.get('www-authenticate')) {
+      if (isHostBasicChallenge(received)) {
         throw new RelayHostAuthRequiredError();
       }
       await clearRelaySession();
@@ -161,7 +170,7 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
   // `errors.ts` mapping can turn them into "OpenCode endpoint not found".
   if (settings?.relay) {
     if (received.status === 403) {
-      throw new Error('Relay 拒绝了该账号的访问（403）');
+      throw new RelayForbiddenError();
     }
     if (received.status === 502 || received.status === 503 || received.status === 504) {
       throw new Error(`Relay 上游不可达（${received.status}）`);

@@ -47,9 +47,16 @@ export function OverlaySheet({ visible, title, onClose, children, headerAction, 
   // Android runs with `adjustResize`, so shrinking the container height keeps
   // the bottom-anchored sheet directly above the keyboard. iOS needs padding.
   const keyboardBehavior = Platform.OS === 'android' ? 'height' : 'padding';
+  // Compact sheets keep the grabber clear of the status bar, but the cap must
+  // follow the *available* height: a keyboard-shrunk window used to reserve 45%
+  // of the original height and could squeeze the sheet down to ~140px.
+  const compactPaddingTop = Math.min(
+    Math.max(64 + insets.top, height * 0.45),
+    Math.max(0, height - 160),
+  );
 
   const content = (
-      <KeyboardAvoidingView behavior={keyboardBehavior} style={[styles.overlay, { paddingTop: compact ? Math.max(64 + insets.top, height * 0.45) : 64 + insets.top }]} testID={testID}>
+      <KeyboardAvoidingView behavior={keyboardBehavior} style={[styles.overlay, { paddingTop: compact ? compactPaddingTop : 64 + insets.top }]} testID={testID}>
         {dismissible ? <Pressable accessibilityLabel={t('common:actions.closeWithName', { title })} onPress={onClose} style={StyleSheet.absoluteFill}>
           <Animated.View style={[styles.backdrop, backdropStyle]} />
         </Pressable> : null}

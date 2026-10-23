@@ -30,7 +30,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
   const [presentation] = useState(() => new Map<string, unknown>());
   const manager = useWorkspaceConnections(shell, isHydrated);
   useWorkspaceAutoApprove(manager);
-  const { updateSettings: updateWorkspaceSettings, retry, change, removeConnection: removeWorkspaceConnection, connectedWorkspace, isEnabled } = manager;
+  const { updateSettings: updateWorkspaceSettings, retry, change, removeConnection: removeWorkspaceConnection, connectedWorkspace, isEnabled, enterRelayMode } = manager;
   const { setFavoriteSessions, setLastSessionByConnection, setProjectPathsByConnection, setSettings, setActiveProjectPath, setChatPreferences } = shell;
   const { connections, focus, snapshots, ensure, resolveKey, switchConnection, activate, disconnect } = manager;
   const selectedRuntime = focus ? snapshots[resolveKey(focus)] : undefined;
@@ -43,9 +43,16 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
   // Dropping it there silently lost the `relay` block, which in turn disabled
   // the relay guard and the host list.
   const updateSettings = useCallback<ConnectionContextValue['updateSettings']>((patch) => {
+    // Relay sign-in without a host is a new connection identity, not an edit of
+    // whatever direct profile happened to be focused. Upsert a relay entry so
+    // the direct profile stays recoverable.
+    if (patch.relay && !patch.relay.hostId) {
+      enterRelayMode({ ...settings, ...patch });
+      return;
+    }
     if (focus) updateWorkspaceSettings(focus.connectionId, { ...settings, ...patch });
     else setSettings((current) => ({ ...current, ...patch }));
-  }, [focus, updateWorkspaceSettings, settings, setSettings]);
+  }, [enterRelayMode, focus, updateWorkspaceSettings, settings, setSettings]);
   const disconnectProfile = useCallback(async (profile: ConnectionProfile) => disconnect(getConnectionUiScope(profile)), [disconnect]);
   const isActiveProfile = useCallback((profile: ConnectionProfile) => isEnabled(getConnectionUiScope(profile)), [isEnabled]);
   const profileRefreshed = useCallback((previous: ConnectionProfile, next: ConnectionProfile) => {

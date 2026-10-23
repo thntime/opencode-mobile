@@ -210,6 +210,27 @@ describe('refresh failure classification', () => {
       loginCalls: 1,
     },
     {
+      // I1: a 5xx from /api/login is the Relay being unavailable, not a
+      // rejected password. It must never delete the token or host.
+      reason: 'unreachable' as const,
+      error: RelayUnreachableError,
+      code: 'relay_unreachable',
+      clears: 0,
+      password: 'secret',
+      transport: () => json({ error: 'upstream down' }, 500),
+      loginCalls: 1,
+    },
+    {
+      // A malformed 200 response is a protocol problem, not a credential one.
+      reason: 'invalid_response' as const,
+      error: RelayUnreachableError,
+      code: 'relay_unreachable',
+      clears: 0,
+      password: 'secret',
+      transport: () => json({ user: { email: ACCOUNT } }),
+      loginCalls: 1,
+    },
+    {
       reason: 'invalid_credentials' as const,
       error: RelayReauthRequiredError,
       code: 'relay_reauth_required',
@@ -392,6 +413,32 @@ describe('fetchConnection relay refresh', () => {
     expect(await getRelayToken()).toBe(fresh);
     expect(h.tokenDeletes).toBe(0);
     expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay.hostId).toBe('host-a');
+  });
+
+  it('does not treat a Bearer challenge as a host-auth problem', async () => {
+    setRelaySessionPassword('secret');
+    h.secure.set(TOKEN_KEY, 'expired-token');
+    const fresh = futureToken();
+    const transport = vi.fn(async (input: RequestInfo | URL) => (
+      String(input).endsWith('/api/login')
+        ? loginResponse(fresh)
+        : new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { 'content-type': 'application/json', 'www-authenticate': 'Bearer realm="relay"' },
+          })
+    ));
+    vi.stubGlobal('fetch', transport);
+    persistSettings();
+
+    const error = await fetchConnection(`${RELAY_URL}/relay/host-a/api/info`, undefined, relaySettings()).catch((reason: unknown) => reason);
+
+    // Only a Basic challenge belongs to the upstream host. A Bearer challenge
+    // is the Relay's own auth, so the fresh token was rejected for real.
+    expect(error).toBeInstanceOf(RelayReauthRequiredError);
+    expect((error as RelayReauthRequiredError).replayed).toBe(true);
+    expect(transport).toHaveBeenCalledTimes(3);
+    expect(await getRelayToken()).toBeUndefined();
+    expect(h.tokenDeletes).toBe(1);
   });
 
   it('still treats a Relay 401 without a challenge as a dead session', async () => {

@@ -28,7 +28,9 @@
     "empty": "No computers yet. Run opencode-tunnel start on your computer, then pull down to refresh.",
     "refresh": "Refresh",
     "loadError": "Could not load the computer list. Pull down to retry.",
-    "selectError": "Could not open this computer. Check the connection and try again."
+    "selectError": "Could not open this computer. Check the connection and try again.",
+    "loginRequired": "Your Relay session needs the account password again. Sign in to continue.",
+    "unreachable": "Could not reach the Relay. Check your network and try again."
   },
   "chooser": {
     "relay": "Use a self-hosted Relay",

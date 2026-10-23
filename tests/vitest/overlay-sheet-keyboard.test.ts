@@ -10,6 +10,7 @@ const flatten = (style: any): Record<string, any> => Array.isArray(style)
 // Mutable so one module instance can be rendered per platform, matching the
 // component reading `Platform.OS` at render time.
 const platform = { OS: 'ios' };
+const window = { height: 800 };
 
 const { OverlaySheet } = await loadTs('components/ui/overlay-sheet.tsx', {
   '@/providers/workspace-context': { WorkspaceScope: 'WorkspaceScope', WorkspaceScopeContext: {} },
@@ -25,7 +26,7 @@ const { OverlaySheet } = await loadTs('components/ui/overlay-sheet.tsx', {
     Pressable: 'Pressable',
     ScrollView: 'ScrollView',
     View: 'View',
-    useWindowDimensions: () => ({ height: 800 }),
+    useWindowDimensions: () => ({ height: window.height }),
   },
   'react-native-gesture-handler': {
     Gesture: {
@@ -88,8 +89,17 @@ describe('OverlaySheet keyboard avoidance', () => {
     });
   });
 
-  it('keeps the compact paddingTop cap above the keyboard-avoiding frame', () => {
-    expect(flatten(frame('android', { compact: true }).props.style).paddingTop).toBe(360);
-    expect(flatten(frame('ios', { compact: true }).props.style).paddingTop).toBe(360);
+  it('caps the compact padding by the available height instead of a fixed ratio', () => {
+    window.height = 800;
+    expect(flatten(frame('android', { compact: true }).props.style).paddingTop).toBeLessThan(window.height);
+    expect(flatten(frame('ios', { compact: true }).props.style).paddingTop).toBeLessThan(window.height);
+
+    // A keyboard-shrunk window must not reserve 45% of the original height:
+    // the sheet keeps at least 160px of usable space.
+    window.height = 280;
+    const compactTop = flatten(frame('android', { compact: true }).props.style).paddingTop;
+    expect(compactTop).toBeLessThanOrEqual(280 - 160);
+    expect(compactTop).toBeLessThan(280);
+    window.height = 800;
   });
 });

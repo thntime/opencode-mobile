@@ -28,7 +28,9 @@
     "empty": "Nenhum computador ainda. Execute opencode-tunnel start no seu computador e puxe para baixo para atualizar.",
     "refresh": "Atualizar",
     "loadError": "Não foi possível carregar a lista de computadores. Puxe para baixo para tentar novamente.",
-    "selectError": "Não foi possível abrir este computador. Verifique a conexão e tente novamente."
+    "selectError": "Não foi possível abrir este computador. Verifique a conexão e tente novamente.",
+    "loginRequired": "Sua sessão do Relay precisa da senha da conta novamente. Entre para continuar.",
+    "unreachable": "Não foi possível alcançar o Relay. Verifique sua rede e tente novamente."
   },
   "chooser": {
     "relay": "Usar um Relay auto-hospedado",

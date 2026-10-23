@@ -63,6 +63,18 @@ export class RelayHostAuthRequiredError extends Error {
   }
 }
 
+// The Relay itself refused the account (403). This is not a rejected
+// credential: retrying the sign-in cannot change it, and the selected host must
+// survive so the user can pick another one after access is restored.
+export class RelayForbiddenError extends Error {
+  readonly code = 'relay_forbidden';
+
+  constructor() {
+    super('Relay 拒绝了该账号的访问（403）');
+    this.name = 'RelayForbiddenError';
+  }
+}
+
 // The Relay could not be reached at all (timeout, DNS, proxy). The session is
 // still valid, so this must never clear the token or drop the host.
 export class RelayUnreachableError extends Error {
@@ -90,11 +102,13 @@ export function isRelayUnreachable(value: unknown): value is RelayUnreachableErr
 }
 
 // The failure reason decides both the error type and whether the caller may
-// sign the user out. Only a rejected credential maps to `RelayReauthRequiredError`.
+// sign the user out. Only a credential the Relay actually rejected maps to
+// `RelayReauthRequiredError`; a transport/protocol failure is retryable and
+// must leave the session intact.
 export function relayRefreshError(reason: RelayRefreshFailure, replayed = false) {
   if (reason === 'missing_password') return new RelayLoginRequiredError(reason);
-  if (reason === 'unreachable') return new RelayUnreachableError(reason);
-  return new RelayReauthRequiredError(reason, replayed);
+  if (reason === 'invalid_credentials') return new RelayReauthRequiredError(reason, replayed);
+  return new RelayUnreachableError(reason);
 }
 
 // Concurrent 401s share one sign-in so a burst of requests cannot burn several
@@ -163,9 +177,9 @@ async function performRefresh(
     const code = typeof reason === 'object' && reason !== null ? (reason as { code?: unknown }).code : undefined;
     const failure: RelayRefreshFailure = typeof code === 'string' ? code as RelayRefreshFailure : 'unreachable';
     // D3: only a credential the Relay actually rejected may destroy the session.
-    // A network failure (`unreachable`) or a malformed response leaves the
-    // token and host selection intact.
-    if (failure === 'invalid_credentials' || failure === 'rejected') {
+    // A network failure (`unreachable`), throttling, or a malformed response
+    // leaves the token and host selection intact.
+    if (failure === 'invalid_credentials') {
       await clearRelaySession();
     }
     return { status: 'needs_reauth', reason: failure };

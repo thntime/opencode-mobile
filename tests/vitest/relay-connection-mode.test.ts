@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchConnection } from '@/lib/opencode/client/fetch';
-import { getConnectionError } from '@/lib/opencode/client/errors';
+import { classifyConnectionFailure, getConnectionError } from '@/lib/opencode/client/errors';
 import { clearRelayToken } from '@/lib/relay/auth';
 import { isRelayConnectionTarget, relayModeSettings } from '@/lib/relay/connection-mode';
+import { RelayForbiddenError } from '@/lib/relay/refresh';
 import { buildRelayServerUrl } from '@/lib/relay/url';
 import type { OpencodeConnectionSettings } from '@/lib/opencode/client/types';
 import { hookRuntime, loadTs } from '../helpers/runtime.mjs';
@@ -91,6 +92,27 @@ describe('relay connection mode', () => {
     // No host selected yet (right after signing in).
     expect(isRelayConnectionTarget('', { relayUrl: RELAY_URL, account: 'alice@example.test' })).toBe(false);
   });
+
+  it('compares canonical spellings so case, trailing slash and default port do not reject a host', () => {
+    expect(isRelayConnectionTarget('HTTPS://RELAY.EXAMPLE.TEST:443/relay/host-a/', relayAuth())).toBe(true);
+    expect(isRelayConnectionTarget('https://relay.example.test:443/relay/host-a', relayAuth())).toBe(true);
+  });
+
+  it('signing in again with the same account keeps the selected host', () => {
+    const previous = { relay: { relayUrl: RELAY_URL, account: 'alice@example.test', hostId: HOST_ID, hostName: 'Studio Mac' } };
+    expect(relayModeSettings({ relayUrl: `${RELAY_URL}/`, account: 'alice@example.test', tokenExpiresAt: 1_900_000_000_000 }, previous)).toEqual({
+      relay: { relayUrl: `${RELAY_URL}/`, account: 'alice@example.test', tokenExpiresAt: 1_900_000_000_000, hostId: HOST_ID, hostName: 'Studio Mac' },
+      serverUrl: buildRelayServerUrl(RELAY_URL, HOST_ID),
+      username: '',
+      password: undefined,
+      connect: undefined,
+    });
+    // A different account must not inherit the previous host.
+    expect(relayModeSettings({ relayUrl: RELAY_URL, account: 'bob@example.test' }, previous)).toMatchObject({
+      relay: { relayUrl: RELAY_URL, account: 'bob@example.test' },
+      serverUrl: '',
+    });
+  });
 });
 
 describe('relay request target guard', () => {
@@ -137,6 +159,18 @@ describe('relay request target guard', () => {
 describe('relay HTTP failure semantics', () => {
   // D4: relay status codes are translated where the relay response is received,
   // before the generic `errors.ts` mapping can call them "endpoint not found".
+  it('keeps a Relay 403 out of the auth classification so the host is not dropped', async () => {
+    const settings = relaySettings();
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'forbidden' }, 403)));
+
+    const error = await fetchConnection(`${buildRelayServerUrl(RELAY_URL, HOST_ID)}/api/info`, undefined, settings)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(RelayForbiddenError);
+    expect(classifyConnectionFailure(error)).toBe('forbidden');
+    expect(classifyConnectionFailure(error)).not.toBe('auth');
+  });
+
   const cases = [
     { status: 403, message: /Relay 拒绝了该账号的访问（403）/ },
     { status: 502, message: /Relay 上游不可达（502）/ },

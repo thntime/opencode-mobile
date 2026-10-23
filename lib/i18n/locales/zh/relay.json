@@ -28,7 +28,9 @@
     "empty": "还没有电脑。在电脑上运行 opencode-tunnel start，然后下拉刷新。",
     "refresh": "刷新",
     "loadError": "无法加载电脑列表，请下拉重试。",
-    "selectError": "无法打开这台电脑，请检查连接后重试。"
+    "selectError": "无法打开这台电脑，请检查连接后重试。",
+    "loginRequired": "Relay 会话需要重新输入账号密码，请重新登录后继续。",
+    "unreachable": "无法连接到 Relay，请检查网络后重试。"
   },
   "chooser": {
     "relay": "使用自建 Relay",

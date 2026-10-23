@@ -28,7 +28,9 @@
     "empty": "Aucun ordinateur pour le moment. Exécutez opencode-tunnel start sur votre ordinateur, puis tirez vers le bas pour actualiser.",
     "refresh": "Actualiser",
     "loadError": "Impossible de charger la liste des ordinateurs. Tirez vers le bas pour réessayer.",
-    "selectError": "Impossible d’ouvrir cet ordinateur. Vérifiez la connexion et réessayez."
+    "selectError": "Impossible d’ouvrir cet ordinateur. Vérifiez la connexion et réessayez.",
+    "loginRequired": "Votre session Relay nécessite à nouveau le mot de passe du compte. Connectez-vous pour continuer.",
+    "unreachable": "Impossible de joindre le Relay. Vérifiez votre réseau et réessayez."
   },
   "chooser": {
     "relay": "Utiliser un Relay auto-hébergé",

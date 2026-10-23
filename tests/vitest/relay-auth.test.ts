@@ -116,9 +116,15 @@ describe('relay login', () => {
     expect(h.secure.size).toBe(0);
   });
 
-  it('surfaces other relay failures with their status', async () => {
+  it('treats a 5xx as unreachable rather than a rejected credential', async () => {
     vi.stubGlobal('fetch', loginFetch({ error: 'login failed' }, 500));
-    await expect(login('https://relay.example.test', 'alice@example.test', 'secret')).rejects.toMatchObject({ code: 'rejected', status: 500 });
+    await expect(login('https://relay.example.test', 'alice@example.test', 'secret')).rejects.toMatchObject({ code: 'unreachable', status: 500 });
+    expect(h.secure.size).toBe(0);
+  });
+
+  it('treats throttling as unreachable too', async () => {
+    vi.stubGlobal('fetch', loginFetch({ error: 'slow down' }, 429));
+    await expect(login('https://relay.example.test', 'alice@example.test', 'secret')).rejects.toMatchObject({ code: 'unreachable', status: 429 });
     expect(h.secure.size).toBe(0);
   });
 });

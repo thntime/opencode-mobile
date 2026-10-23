@@ -64,6 +64,7 @@ export function getConnectionScope({ serverUrl, username }: ConnectionIdentity):
 
 type ConnectionUiIdentity = ConnectionIdentity & {
   connect?: { controlPlaneUrl: string; machineId: string };
+  relay?: { relayUrl: string; account: string };
 };
 
 /**
@@ -74,9 +75,19 @@ type ConnectionUiIdentity = ConnectionIdentity & {
  * connections fall back to the canonical storage scope.
  */
 export function getConnectionUiScope(settings: ConnectionUiIdentity): string {
-  return settings.connect
-    ? `connect:${settings.connect.controlPlaneUrl}:${settings.connect.machineId}`
-    : getConnectionScope(settings);
+  if (settings.connect) {
+    return `connect:${settings.connect.controlPlaneUrl}:${settings.connect.machineId}`;
+  }
+  // Relay sign-in happens before a host is chosen, so `serverUrl` is empty and
+  // the canonical server+user scope would collide for every account. The
+  // account (not the password or token) is the stable identity of that entry;
+  // once a host is selected `serverUrl` carries `/relay/{hostId}` and the
+  // canonical scope keeps each host isolated as before.
+  if (settings.relay && !settings.serverUrl.trim()) {
+    const relayUrl = normalizeConnectionUrl(settings.relay.relayUrl);
+    return `relay:${relayUrl.origin}${relayUrl.pathAndQuery}:${settings.relay.account.trim()}`;
+  }
+  return getConnectionScope(settings);
 }
 
 function toKeySegment(value: string): string {

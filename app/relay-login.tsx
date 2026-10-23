@@ -32,7 +32,7 @@ export default function RelayLoginScreen() {
       relayUrl: normalizeRelayUrl(values.relayUrl),
       account: values.account,
       tokenExpiresAt: values.tokenExpiresAt,
-    }));
+    }, settings));
     // A fresh sign-in satisfies the guard's "enter the password again" signal.
     clearRelayLoginRequired();
     router.replace('/relay-hosts');

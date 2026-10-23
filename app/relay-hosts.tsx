@@ -6,14 +6,14 @@ import { Appbar, HelperText, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RelayHostList } from '@/components/relay/relay-host-list';
-import { RelayPassphraseDialog, type RelayPassphraseError } from '@/components/relay/relay-passphrase-dialog';
+import { RelayPassphraseDialog, mapRelayE2EErrorToDialogError, type RelayPassphraseError } from '@/components/relay/relay-passphrase-dialog';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { clearRelayConnectionState } from '@/lib/connection-profiles';
 import { logout } from '@/lib/relay/auth';
-import { isRelayE2EError } from '@/lib/relay/errors';
 import { fetchRelayHosts } from '@/lib/relay/hosts';
 import { clearHostKeys, fetchHostKey, getHostKey, unlockHostKey } from '@/lib/relay/keywrap';
-import { isRelayReauthRequired } from '@/lib/relay/refresh';
+import { isRelayLoginRequired, isRelayReauthRequired, isRelayUnreachable } from '@/lib/relay/refresh';
 import { clearPassphrase } from '@/lib/relay/session-key';
 import type { RelayHost } from '@/lib/relay/types';
 import { buildRelayServerUrl } from '@/lib/relay/url';
@@ -36,6 +36,7 @@ export default function RelayHostsScreen() {
   const [selecting, setSelecting] = useState<string>();
   const [unlockTarget, setUnlockTarget] = useState<RelayHost>();
   const [error, setError] = useState(false);
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string>();
   const [selectionError, setSelectionError] = useState(false);
   // A host that rejects the tunnel with a 401 challenge explains itself: show
   // that concrete message instead of the generic "could not open" copy.
@@ -52,8 +53,12 @@ export default function RelayHostsScreen() {
   const signOutToLogin = useCallback(async () => {
     clearPassphrase();
     clearHostKeys();
+    // Drop the relay target as well: leaving `serverUrl` pointing at
+    // `{relayUrl}/relay/{hostId}` would turn the next launch into a direct
+    // connection to the Relay's forwarding path.
+    await clearRelayConnectionState().catch(() => undefined);
     await logout().catch(() => undefined);
-    updateSettings({ relay: undefined });
+    updateSettings({ relay: undefined, serverUrl: '', username: '', password: undefined, connect: undefined });
     router.replace('/relay-login');
   }, [router, updateSettings]);
 
@@ -61,6 +66,7 @@ export default function RelayHostsScreen() {
     if (!relay) return;
     setRefreshing(true);
     setError(false);
+    setLoadErrorMessage(undefined);
     setSelectionError(false);
     setSelectionErrorMessage(undefined);
     try {
@@ -70,11 +76,19 @@ export default function RelayHostsScreen() {
         await signOutToLogin();
         return;
       }
+      if (isRelayLoginRequired(reason)) {
+        setLoadErrorMessage(t('relay:hosts.loginRequired'));
+        return;
+      }
+      if (isRelayUnreachable(reason)) {
+        setLoadErrorMessage(t('relay:hosts.unreachable'));
+        return;
+      }
       setError(true);
     } finally {
       setRefreshing(false);
     }
-  }, [relay, signOutToLogin]);
+  }, [relay, signOutToLogin, t]);
 
   // Initial load. The state writes live in promise callbacks so the effect
   // body itself stays free of synchronous setState.
@@ -82,18 +96,26 @@ export default function RelayHostsScreen() {
     let cancelled = false;
     if (!relay) return;
     fetchRelayHosts(relay.relayUrl, relay.account)
-      .then((list) => { if (!cancelled) { setHosts(list); setError(false); } })
+      .then((list) => { if (!cancelled) { setHosts(list); setError(false); setLoadErrorMessage(undefined); } })
       .catch((reason: unknown) => {
         if (cancelled) return;
         if (isRelayReauthRequired(reason)) {
           void signOutToLogin();
           return;
         }
+        if (isRelayLoginRequired(reason)) {
+          setLoadErrorMessage(t('relay:hosts.loginRequired'));
+          return;
+        }
+        if (isRelayUnreachable(reason)) {
+          setLoadErrorMessage(t('relay:hosts.unreachable'));
+          return;
+        }
         setError(true);
       })
       .finally(() => { if (!cancelled) setRefreshing(false); });
     return () => { cancelled = true; };
-  }, [relay, signOutToLogin]);
+  }, [relay, signOutToLogin, t]);
 
   async function proceed(host: RelayHost) {
     if (!relay) return;
@@ -165,6 +187,18 @@ export default function RelayHostsScreen() {
         await signOutToLogin();
         return;
       }
+      if (isRelayLoginRequired(reason)) {
+        setSelectionErrorMessage(t('relay:hosts.loginRequired'));
+        setSelectionError(true);
+        setSelecting(undefined);
+        return;
+      }
+      if (isRelayUnreachable(reason)) {
+        setSelectionErrorMessage(t('relay:hosts.unreachable'));
+        setSelectionError(true);
+        setSelecting(undefined);
+        return;
+      }
       setSelectionError(true);
       setSelecting(undefined);
     }
@@ -180,11 +214,10 @@ export default function RelayHostsScreen() {
         await signOutToLogin();
         return true;
       }
-      if (isRelayE2EError(reason, 'relay_e2e_bad_passphrase')) {
-        reportError('badPassphrase');
-        return false;
-      }
-      reportError('unavailable');
+      // The dialog distinguishes a wrong passphrase, unusable key material,
+      // Relay authorization and network failures. Mapping here (rather than in
+      // the dialog) keeps `handleUnlock` the single decision point.
+      reportError(mapRelayE2EErrorToDialogError(reason));
       return false;
     }
     setUnlockTarget(undefined);
@@ -206,6 +239,9 @@ export default function RelayHostsScreen() {
         <Text variant="bodyMedium" style={{ color: palette.muted }}>{t('relay:hosts.subtitle')}</Text>
         {error ? (
           <HelperText testID="relay-hosts-error" type="error" visible>{t('relay:hosts.loadError')}</HelperText>
+        ) : null}
+        {loadErrorMessage ? (
+          <HelperText testID="relay-hosts-error" type="error" visible>{loadErrorMessage}</HelperText>
         ) : null}
         {selectionError ? (
           <HelperText testID="relay-host-select-error" type="error" visible>

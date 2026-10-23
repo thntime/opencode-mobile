@@ -5,12 +5,14 @@ export type ConnectionFailureKind =
   | 'offline'
   | 'auth'
   | 'host-auth'
+  | 'forbidden'
   | 'entitlement'
   | 'tunnel-startup'
   | 'server-incompatible'
   | 'unknown';
 
 const RELAY_HOST_AUTH_CODE = 'relay_host_auth_required';
+const RELAY_FORBIDDEN_CODE = 'relay_forbidden';
 
 // SDK wrappers sometimes move the original error under `cause`, so the code is
 // looked up along the same chain `describeError` walks.
@@ -55,6 +57,9 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailureKind
   // The host-auth message contains "（401）", so this must run before any status
   // or message inference: the Relay session itself is still valid.
   if (hasFailureCode(error, RELAY_HOST_AUTH_CODE)) return 'host-auth';
+  // A Relay 403 is an account/authorization decision, not a rejected token.
+  // Keeping it separate stops `performConnect` from dropping the selected host.
+  if (hasFailureCode(error, RELAY_FORBIDDEN_CODE)) return 'forbidden';
   const { status, message } = describeError(error);
   if (TUNNEL_STARTUP_PATTERN.test(message)) return 'tunnel-startup';
   const explicitStatus = status ?? (/\b401\b/.test(message) ? 401 : /\b403\b/.test(message) ? 403 : undefined);
@@ -71,8 +76,9 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailureKind
 }
 
 export function isRetryableConnectionFailure(kind: ConnectionFailureKind) {
-  // Retrying cannot fix a host-side Basic-auth configuration either.
-  return kind !== 'auth' && kind !== 'entitlement' && kind !== 'server-incompatible' && kind !== 'host-auth';
+  // Retrying cannot fix a host-side Basic-auth configuration or an account the
+  // Relay has explicitly forbidden either.
+  return kind !== 'auth' && kind !== 'entitlement' && kind !== 'server-incompatible' && kind !== 'host-auth' && kind !== 'forbidden';
 }
 
 export function isAuthConnectionFailure(kind: ConnectionFailureKind) {

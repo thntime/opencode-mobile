@@ -6,7 +6,7 @@ import { decodeBase64Bytes } from './base64';
 import { RelayE2EError } from './errors';
 import { deleteHostKey, HOST_KEY_BYTES, markHostUnlocked, setHostKey } from './host-key-cache';
 import { ensureRandomSource } from './random';
-import { isRelayReauthRequired } from './refresh';
+import { isRelayLoginRequired, isRelayReauthRequired, isRelayUnreachable } from './refresh';
 import { setPassphrase } from './session-key';
 import { normalizeRelayUrl } from './url';
 
@@ -89,6 +89,10 @@ export async function fetchHostKey(relayUrl: string, hostId: string, token?: str
       }
       throw error;
     }
+    // These two are session/transport states, not a key-format problem: the UI
+    // must be able to ask for the account password again or offer a retry
+    // instead of claiming the key material is unusable.
+    if (isRelayLoginRequired(error) || isRelayUnreachable(error)) throw error;
     throw new RelayE2EError('relay_e2e_key_unavailable', 'Could not reach the Relay to fetch the host key.');
   }
 

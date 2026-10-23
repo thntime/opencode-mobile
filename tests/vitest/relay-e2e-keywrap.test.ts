@@ -14,7 +14,7 @@ import {
   unlockHostKey,
   unwrapHostKey,
 } from '@/lib/relay/keywrap';
-import { isRelayReauthRequired, resetRelayRefreshState } from '@/lib/relay/refresh';
+import { isRelayLoginRequired, isRelayReauthRequired, isRelayUnreachable, resetRelayRefreshState } from '@/lib/relay/refresh';
 import { clearRelayLoginRequired, relayLoginRequired } from '@/lib/relay/guard';
 import { clearPassphrase, getPassphrase, setPassphrase } from '@/lib/relay/session-key';
 import { clearRelaySessionPassword, setRelaySessionPassword } from '@/lib/relay/session-password';
@@ -137,14 +137,30 @@ describe('relay host key fetch', () => {
 
     const error = await fetchHostKey('https://relay.example.test', 'host-a', 'jwt', 'alice@example.test').catch((reason: unknown) => reason);
 
-    // D3: a lost in-memory password is not a rejected credential. The unlock
-    // flow reports a key-fetch failure, but the session survives and the guard
-    // is signalled to ask for the password again instead of signing out.
+    // D3/I5: a lost in-memory password is not a rejected credential and not a
+    // key-format problem either. The login-required error reaches the caller so
+    // it can ask for the password; the session itself survives.
     expect(isRelayReauthRequired(error)).toBe(false);
-    expect(isRelayE2EError(error)).toBe(true);
-    expect((error as { code?: string }).code).toBe('relay_e2e_key_unavailable');
+    expect(isRelayLoginRequired(error)).toBe(true);
+    expect((error as { code?: string }).code).toBe('relay_login_required');
+    expect(isRelayE2EError(error)).toBe(false);
     expect(relayLoginRequired()).toBe(true);
     expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows an unreachable Relay instead of folding it into a key-format error', async () => {
+    setRelaySessionPassword('secret');
+    const transport = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/login')) throw new TypeError('Network request failed');
+      return respond({ error: 'nope' }, 401);
+    });
+    vi.stubGlobal('fetch', transport);
+
+    const error = await fetchHostKey('https://relay.example.test', 'host-a', 'jwt', 'alice@example.test').catch((reason: unknown) => reason);
+
+    expect(isRelayUnreachable(error)).toBe(true);
+    expect((error as { code?: string }).code).toBe('relay_unreachable');
+    expect(isRelayE2EError(error)).toBe(false);
   });
 
   it('maps other failures to key_unavailable', async () => {

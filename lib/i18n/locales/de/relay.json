@@ -28,7 +28,9 @@
     "empty": "Noch keine Computer. Führe opencode-tunnel start auf deinem Computer aus und ziehe dann zum Aktualisieren nach unten.",
     "refresh": "Aktualisieren",
     "loadError": "Die Computerliste konnte nicht geladen werden. Ziehe nach unten, um es erneut zu versuchen.",
-    "selectError": "Dieser Computer konnte nicht geöffnet werden. Prüfe die Verbindung und versuche es erneut."
+    "selectError": "Dieser Computer konnte nicht geöffnet werden. Prüfe die Verbindung und versuche es erneut.",
+    "loginRequired": "Deine Relay-Sitzung benötigt das Kontopasswort erneut. Melde dich an, um fortzufahren.",
+    "unreachable": "Der Relay ist nicht erreichbar. Prüfe dein Netzwerk und versuche es erneut."
   },
   "chooser": {
     "relay": "Selbst gehosteten Relay verwenden",

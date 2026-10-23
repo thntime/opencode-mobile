@@ -142,6 +142,12 @@ export async function login(relayUrl: string, account: string, password: string)
   if (response.status === 401) {
     throw new RelayLoginError('invalid_credentials', 'The account or password is incorrect.', 401);
   }
+  // 5xx/408/429 describe the Relay being unavailable or throttling, not a
+  // rejected credential. Callers must keep the session and report a network
+  // problem instead of signing the user out.
+  if (response.status >= 500 || response.status === 408 || response.status === 429) {
+    throw new RelayLoginError('unreachable', `The Relay is unavailable (${response.status}).`, response.status);
+  }
   if (!response.ok) {
     throw new RelayLoginError('rejected', `The Relay rejected the sign-in (${response.status}).`, response.status);
   }
