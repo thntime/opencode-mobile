@@ -89,18 +89,16 @@ idempotence, unique/bounded cache copies and failure before writes on unsupporte
 versions. `tests/e2e/share.spec.mjs` remains unchanged web route smoke coverage;
 the native share sheet requires device acceptance.
 
-Manual Build workflow runs with `build_android=true` also validate the actual
-signed, minified release APK on an API 36 x86_64 emulator. The APK must contain
-single/multiple share filters, the app scheme, the dynamically loaded scheme
-resource and the patched cache-copy code. `tests/native/android-sharing.py`
-then covers cold/warm/repeated text shares, existing/New chat selection, draft
-preservation, one-shot handoff, and PNG/PDF sharing through Android Files with
-real URI grants. The existing fake V2 server confirms nothing auto-submits.
-The workflow uploads screenshots, accessibility trees, manifest and logs as
-`android-sharing-evidence`, including on failures. Emulator coverage does not
-establish OEM share-sheet behaviour or physical-device accessibility.
-Set `share_apk_run` to an existing Build run ID to repeat native validation
-against its exact release APK without another compilation (`build_android=false`).
+Manual Build workflow runs with `build_android=true` build and verify the actual
+signed, minified release APK. The APK must contain single/multiple share
+filters, the app scheme, the dynamically loaded scheme resource and the patched
+cache-copy code. `tests/native/android-sharing.py` covers cold/warm/repeated
+text shares, existing/New chat selection, draft preservation, one-shot handoff,
+and PNG/PDF sharing through Android Files with real URI grants, but it is not
+currently wired into CI: run it manually against a built APK. Emulator coverage
+does not establish OEM share-sheet behaviour or physical-device accessibility.
+`share_apk_run` is still accepted as a concurrency key so a validation run can
+reuse an existing Build run ID without racing it.
 Inspection of the earlier release APK confirmed both the native patch and
 `share_into_scheme` were absent. Source compilation and an explicit resource
 keep rule address these independent build defects; the release APK checks
@@ -834,7 +832,7 @@ After that baseline, the next most valuable parity suite would add:
 
 The fake server self-test covers the expanded REST contract plus a real ticket-authenticated PTY WebSocket exchange. Playwright covers patch save, archive/restore, worktree creation, MCP addition, and interactive xterm behavior including history, modifiers, Unicode, alternate screens, bracketed paste and cursor resume. It does not prove real full-screen program compatibility, native WebSocket behavior, MCP OAuth UI completion, attachment capability, provider OAuth callback, or native reconnect behavior.
 
-Android native validation happens on every CI run in the tagged/`main`/manual `android-release` job in `.github/workflows/build.yml`; there is no separate push-time Android development build gate.
+Android native sharing validation (`tests/native/android-sharing.py`) is not wired into CI. Run it manually against an APK built locally or by the `android-release` job on `v*` tags and manual dispatches; there is no push-time Android development build gate.
 
 ## Assessment Validation Limits
 

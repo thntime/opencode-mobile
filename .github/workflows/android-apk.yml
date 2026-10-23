@@ -145,8 +145,14 @@ jobs:
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           AAPT=$(find "$BUILD_TOOLS" -name aapt -type f | head -1)
-          test -n "$AAPT"
-          PACKAGE_LINE=$("$AAPT" dump badging "$APK" | grep "^package:")
+          if [ -z "$AAPT" ]; then
+            AAPT=$(find "$BUILD_TOOLS" -name aapt2 -type f | head -1)
+          fi
+          test -n "$AAPT" || { echo "::error::aapt/aapt2 not found in Android build-tools"; exit 1; }
+          PACKAGE_LINE=$("$AAPT" dump badging "$APK" | grep "^package:") || {
+            echo "::error::aapt dump did not report a package line"
+            exit 1
+          }
           echo "$PACKAGE_LINE"
           echo "$PACKAGE_LINE" | grep -q "name='${EXPO_ANDROID_PACKAGE}'" || {
             echo "::error::APK applicationId does not match EXPO_ANDROID_PACKAGE=${EXPO_ANDROID_PACKAGE}"

@@ -125,10 +125,10 @@ npm run test:fake-server
 The app is built in `EXPO_PUBLIC_E2E_MODE=1` for CI flow tests so notification and
 voice bootstrap side effects do not interfere with deterministic automation.
 
-Android native validation happens on `v*` tags and manual dispatches with
-`build_android: true` in the `android-release` job in
-`.github/workflows/build.yml`; the local `npm run build:development:android`
-command remains available for manual use.
+Android native sharing validation (`tests/native/android-sharing.py`) is not
+wired into CI; run it manually against an APK from the `android-release` job
+(`v*` tags or manual dispatches with `build_android: true`). The local
+`npm run build:development:android` command remains available for manual use.
 
 ## Test Layout
 
