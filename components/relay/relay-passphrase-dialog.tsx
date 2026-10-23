@@ -67,6 +67,8 @@ export function RelayPassphraseDialog({
           autoCorrect={false}
           disabled={busy}
           autoFocus
+          returnKeyType="go"
+          onSubmitEditing={() => void submit()}
         />
         {error ? (
           <HelperText testID="relay-passphrase-error" type="error" visible>{t(`relay:unlock.${error}`)}</HelperText>

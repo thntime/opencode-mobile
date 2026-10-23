@@ -236,7 +236,7 @@ export type ConnectionContextValue = {
   settings: OpencodeConnectionSettings;
   updateSettings: (patch: Partial<OpencodeConnectionSettings>) => void;
   switchConnection: (
-    next: Pick<OpencodeConnectionSettings, 'serverUrl' | 'username' | 'password' | 'connect'>,
+    next: Pick<OpencodeConnectionSettings, 'serverUrl' | 'username' | 'password' | 'connect'> & { relay?: OpencodeConnectionSettings['relay'] },
     modelPreferences?: Partial<ChatPreferences>,
   ) => Promise<ConnectionState>;
   connection: ConnectionState;

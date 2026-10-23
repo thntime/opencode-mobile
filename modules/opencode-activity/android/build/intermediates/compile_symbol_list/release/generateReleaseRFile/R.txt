@@ -1,0 +1,1 @@
+int drawable ic_opencode_activity 0x0

@@ -4,7 +4,7 @@ import { scrypt } from '@noble/hashes/scrypt';
 import { relayFetch } from './authenticated-fetch';
 import { decodeBase64Bytes } from './base64';
 import { RelayE2EError } from './errors';
-import { deleteHostKey, HOST_KEY_BYTES, setHostKey } from './host-key-cache';
+import { deleteHostKey, HOST_KEY_BYTES, markHostUnlocked, setHostKey } from './host-key-cache';
 import { ensureRandomSource } from './random';
 import { isRelayReauthRequired } from './refresh';
 import { setPassphrase } from './session-key';
@@ -140,6 +140,9 @@ export async function unlockHostKey({ relayUrl, hostId, passphrase, token, accou
     const material = await fetchHostKey(relayUrl, host, token, account);
     if (!material.wrapped) {
       deleteHostKey(host);
+      // No wrapped key means the host disabled E2E: there is nothing to unlock,
+      // so remember that the host is usable to keep the router from looping.
+      markHostUnlocked(host);
       return undefined;
     }
 

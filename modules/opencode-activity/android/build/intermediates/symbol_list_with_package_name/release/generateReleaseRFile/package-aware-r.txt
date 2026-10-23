@@ -1,0 +1,2 @@
+app.getopencode.activity
+drawable ic_opencode_activity

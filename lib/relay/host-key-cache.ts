@@ -6,6 +6,9 @@ import { RelayE2EError } from './errors';
 export const HOST_KEY_BYTES = 32;
 
 const hostKeys = new Map<string, Uint8Array>();
+// Hosts whose key material is empty (E2E disabled). They are unlocked without a
+// passphrase, and the router must not send the user back to the host picker.
+const unlockedWithoutKey = new Set<string>();
 
 export function setHostKey(hostId: string, key: Uint8Array) {
   const id = hostId.trim();
@@ -20,12 +23,25 @@ export function getHostKey(hostId: string): Uint8Array | undefined {
   return hostKeys.get(hostId.trim());
 }
 
+export function markHostUnlocked(hostId: string) {
+  const id = hostId.trim();
+  if (id) unlockedWithoutKey.add(id);
+}
+
+export function isHostUnlocked(hostId: string): boolean {
+  const id = hostId.trim();
+  return hostKeys.has(id) || unlockedWithoutKey.has(id);
+}
+
 export function clearHostKeys() {
   hostKeys.clear();
+  unlockedWithoutKey.clear();
 }
 
 export function deleteHostKey(hostId: string) {
-  hostKeys.delete(hostId.trim());
+  const id = hostId.trim();
+  hostKeys.delete(id);
+  unlockedWithoutKey.delete(id);
 }
 
 // `/relay/{hostId}` is how D1 carries the host id inside `serverUrl`, so the

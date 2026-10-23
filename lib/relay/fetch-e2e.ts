@@ -42,9 +42,9 @@ export async function encryptRelayRequest(init: RequestInit | undefined, key: Ui
   const bytes = await bodyBytes(body);
   if (!bytes || bytes.length === 0) return init;
 
-  // The tunnel rewrites `Content-Type` on encrypted responses; requests use
-  // `text/plain` so no proxy tries to parse the base64 payload.
-  headers.set('Content-Type', 'text/plain');
+  // Keep the caller's `Content-Type`: the tunnel decrypts the body before it
+  // reaches the local OpenCode server, which rejects a JSON payload labelled
+  // `text/plain` with 415. Only the length changes.
   headers.delete('Content-Length');
   return { ...init, body: encryptBody(bytes, key), headers };
 }

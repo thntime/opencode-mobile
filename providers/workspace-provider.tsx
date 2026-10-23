@@ -38,9 +38,14 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
   if (selectedRuntime && retainedRuntime !== selectedRuntime) setRetainedRuntime(selectedRuntime);
   const current = selectedRuntime ?? retainedRuntime;
   const settings = current?.values.connectionValue.settings ?? shell.settings;
+  // Before a workspace connection exists (relay sign-in, onboarding) there is no
+  // focused connection to patch, so the write must land on the shell settings.
+  // Dropping it there silently lost the `relay` block, which in turn disabled
+  // the relay guard and the host list.
   const updateSettings = useCallback<ConnectionContextValue['updateSettings']>((patch) => {
     if (focus) updateWorkspaceSettings(focus.connectionId, { ...settings, ...patch });
-  }, [focus, updateWorkspaceSettings, settings]);
+    else setSettings((current) => ({ ...current, ...patch }));
+  }, [focus, updateWorkspaceSettings, settings, setSettings]);
   const disconnectProfile = useCallback(async (profile: ConnectionProfile) => disconnect(getConnectionUiScope(profile)), [disconnect]);
   const isActiveProfile = useCallback((profile: ConnectionProfile) => isEnabled(getConnectionUiScope(profile)), [isEnabled]);
   const profileRefreshed = useCallback((previous: ConnectionProfile, next: ConnectionProfile) => {

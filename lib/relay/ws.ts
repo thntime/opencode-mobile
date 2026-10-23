@@ -18,6 +18,16 @@ type NativeRemoveEventListener = (
   options?: boolean | EventListenerOptions,
 ) => void;
 
+// Terminal frames are UTF-8 text (shell output and JSON control messages), and
+// the renderer consumes strings. Decrypting to bytes alone would hand it an
+// ArrayBuffer and show mojibake.
+function decodeUtf8(bytes: Uint8Array): string {
+  if (typeof TextDecoder !== 'undefined') return new TextDecoder('utf-8').decode(bytes);
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 1) out += String.fromCharCode(bytes[i]);
+  return out;
+}
+
 function bytesOf(data: unknown): Uint8Array | undefined {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
@@ -87,16 +97,20 @@ export function encryptTerminalSocket(socket: WebSocket, hostKey: Uint8Array): W
     if (closed) return;
     if (!handler && listeners.size === 0) return;
 
-    if (typeof event.data === 'string') {
-      dispatch(event);
-      return;
-    }
-
     try {
       const bytes = bytesOf(event.data);
       if (!bytes) throw new RelayE2EError('relay_e2e_decrypt_failed', 'Unsupported terminal frame.');
+      // Ciphertext always travels as a binary frame (a text frame would be
+      // UTF-8 decoded by the socket and the bytes would be lost). The plaintext
+      // starts with the original opcode so text/binary survives the round trip.
       const plaintext = decryptFrame(bytes, hostKey);
-      dispatch({ data: plaintext.buffer } as unknown as MessageEvent);
+      if (plaintext.length < 1) throw new RelayE2EError('relay_e2e_decrypt_failed', 'Empty terminal frame.');
+      const opcode = plaintext[0];
+      const payload = plaintext.subarray(1);
+      const data = opcode === 1
+        ? decodeUtf8(payload)
+        : payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
+      dispatch({ data } as unknown as MessageEvent);
     } catch (error) {
       fail(error);
     }
@@ -140,23 +154,30 @@ export function encryptTerminalSocket(socket: WebSocket, hostKey: Uint8Array): W
 
   nativeAdd('message', deliver as EventListener);
 
+  const seal = (bytes: Uint8Array, opcode: number) => {
+    const framed = new Uint8Array(bytes.length + 1);
+    framed[0] = opcode;
+    framed.set(bytes, 1);
+    return encryptFrame(framed, hostKey);
+  };
+
   socket.send = ((data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
     if (closed) return;
     if (typeof data === 'string') {
-      nativeSend(encryptFrame(new TextEncoder().encode(data), hostKey));
+      nativeSend(seal(new TextEncoder().encode(data), 1));
       return;
     }
     if (typeof Blob !== 'undefined' && data instanceof Blob) {
       void data.arrayBuffer()
         .then((buffer) => {
-          if (!closed) nativeSend(encryptFrame(new Uint8Array(buffer), hostKey));
+          if (!closed) nativeSend(seal(new Uint8Array(buffer), 2));
         })
         .catch(fail);
       return;
     }
     const bytes = bytesOf(data);
     if (!bytes) throw new RelayE2EError('relay_e2e_unavailable', 'Unsupported terminal frame.');
-    nativeSend(encryptFrame(bytes, hostKey));
+    nativeSend(seal(bytes, 2));
   }) as WebSocket['send'];
 
   return socket;

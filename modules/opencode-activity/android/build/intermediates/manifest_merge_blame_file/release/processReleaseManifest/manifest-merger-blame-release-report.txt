@@ -1,0 +1,36 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="app.getopencode.activity" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6
+7    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+7-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:2:3-75
+7-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:2:20-72
+8    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+8-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:3:3-85
+8-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:3:20-82
+9    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+9-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:4:3-84
+9-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:4:20-81
+10
+11    <application>
+11-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:5:3-8:17
+12        <service
+12-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:6:5-114
+13            android:name="app.getopencode.activity.ActivityService"
+13-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:6:14-45
+14            android:exported="false"
+14-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:6:46-70
+15            android:foregroundServiceType="dataSync" />
+15-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:6:71-111
+16
+17        <receiver
+17-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:7:5-82
+18            android:name="app.getopencode.activity.ActivityDismissReceiver"
+18-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:7:15-54
+19            android:exported="false" />
+19-->/home/zxl/workspace/zxl/opencode-connect/app/modules/opencode-activity/android/src/main/AndroidManifest.xml:7:55-79
+20    </application>
+21
+22</manifest>

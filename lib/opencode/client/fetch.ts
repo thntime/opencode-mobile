@@ -80,7 +80,27 @@ async function replayRelayInit(relay: RelayAuth, init?: RequestInit): Promise<Re
   return withAuthorization(init, result.token);
 }
 
+// SDK calls sometimes hand us a fully built Request (for example the PTY
+// connect-token call). Its headers and body live on the Request, not on `init`,
+// so normalizing first keeps `x-opencode-ticket`, `Content-Type` and the body
+// from being dropped when the relay layer rebuilds the init.
+async function normalizeRequestInput(input: RequestInfo | URL, init?: RequestInit): Promise<RequestInit | undefined> {
+  if (typeof Request === 'undefined' || !(input instanceof Request)) return init;
+  const headers = new Headers(input.headers);
+  let body = init?.body;
+  if (body === undefined && !/^(GET|HEAD)$/i.test(input.method)) {
+    try {
+      body = await input.clone().arrayBuffer();
+    } catch {
+      body = undefined;
+    }
+  }
+  return { ...init, method: init?.method ?? input.method, headers, body, signal: init?.signal ?? input.signal };
+}
+
 export async function fetchConnection(input: RequestInfo | URL, init?: RequestInit, settings?: OpencodeConnectionSettings) {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  init = await normalizeRequestInput(input, init);
   if (settings?.connect) {
     const error = getConnectCredentialError(settings.connect, settings.password);
     if (error) throw new Error(error);
@@ -95,12 +115,11 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
   const transport = settings?.connect || preparedInit?.redirect === 'error'
     ? (input: RequestInfo | URL, init?: RequestInit) => expoFetch(input, { ...init, redirect: 'error' })
     : fetch;
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   const method = preparedInit?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET');
   const finiteRead = /^(GET|HEAD)$/i.test(method) && !/\/event\/?(?:\?|$)/.test(url);
   const send = (nextInit: RequestInit | undefined) => finiteRead
-    ? fetchWithReadDeadline(transport, input, nextInit)
-    : transport(input, nextInit);
+    ? fetchWithReadDeadline(transport, url, nextInit)
+    : transport(url, nextInit);
   let received = await send(preparedInit);
   recordRequest();
   if (settings?.relay && received.status === 401) {

@@ -321,7 +321,7 @@ describe('fetchConnection relay refresh', () => {
     // The single base64 layer decrypts straight to the original JSON: a second
     // encryption pass would produce a body that fails here.
     expect(new TextDecoder().decode(decryptBody(replayBody, key))).toBe(plaintext);
-    expect(new Headers(calls[2][1].headers).get('content-type')).toBe('text/plain');
+    expect(new Headers(calls[2][1].headers).get('content-type')).toBe('application/json');
   });
 
   it('refuses to replay a streaming request body', async () => {

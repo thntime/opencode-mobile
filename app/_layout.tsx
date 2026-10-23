@@ -18,6 +18,7 @@ import '@/lib/i18n';
 import { isConnectEnabled } from '@/lib/connect';
 import { getRelayToken } from '@/lib/relay/auth';
 import { relayRouteTarget } from '@/lib/relay/guard';
+import { isHostUnlocked } from '@/lib/relay/host-key-cache';
 import type { RelayAuth } from '@/lib/relay/types';
 import { useConnection, useOnboarding, useUpdates } from '@/providers/opencode-contexts';
 import { UpdateNotice } from '@/components/ui/update-notice';
@@ -132,7 +133,7 @@ function RootNavigator() {
   // Direct connections have no `relay` block and are never redirected; during
   // onboarding the connect step drives relay navigation explicitly.
   const relayTarget = onboardingCompleted && relay && hasRelayToken !== undefined
-    ? relayRouteTarget(relay, hasRelayToken)
+    ? relayRouteTarget(relay, hasRelayToken, relay.hostId ? isHostUnlocked(relay.hostId) : false)
     : undefined;
 
   return (

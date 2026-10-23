@@ -145,6 +145,14 @@ export function useConnectionConnectActions({
       message: `Connecting to ${getNormalizedServerUrl(targetSettings.serverUrl)}...`,
     });
 
+    // The SDK reads the relay token synchronously while building clients (SSE
+    // headers come from `getRequestHeaders`), so hydrate the mirror before any
+    // client is created on a cold start.
+    if (targetSettings.relay) {
+      const { getRelayToken } = await import('@/lib/relay/auth');
+      await getRelayToken();
+    }
+
     let detectedContract: ServerContract = 'v2';
     try {
       detectedContract = (await detectServerContract(targetSettings)).contract;
@@ -331,7 +339,7 @@ export function useConnectionConnectActions({
   }, [chatPreferencesRef, settingsRef]);
 
   const switchConnection = useCallback(async (
-    next: Pick<OpencodeConnectionSettings, 'serverUrl' | 'username' | 'password' | 'connect'>,
+    next: Pick<OpencodeConnectionSettings, 'serverUrl' | 'username' | 'password' | 'connect'> & { relay?: OpencodeConnectionSettings['relay'] },
     modelPreferences?: Partial<ChatPreferences>,
   ) => {
     await captureActiveProfilePreferences().catch(() => undefined);

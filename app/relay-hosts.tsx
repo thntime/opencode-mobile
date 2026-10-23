@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import { Appbar, HelperText, Text } from 'react-native-paper';
@@ -37,6 +37,11 @@ export default function RelayHostsScreen() {
   const [unlockTarget, setUnlockTarget] = useState<RelayHost>();
   const [error, setError] = useState(false);
   const [selectionError, setSelectionError] = useState(false);
+  // Navigation after a host pick is deferred to an effect: unmounting the
+  // passphrase modal and replacing the route in the same frame trips a Fabric
+  // mount error on some Android builds (addViewAt index mismatch).
+  const [pendingNavigation, setPendingNavigation] = useState(false);
+  const navigationTarget = useRef<string | undefined>(undefined);
 
   // A session that cannot be refreshed at all (no password in memory, or the
   // Relay keeps rejecting the fresh token) is unrecoverable in place: drop the
@@ -89,20 +94,34 @@ export default function RelayHostsScreen() {
   async function proceed(host: RelayHost) {
     if (!relay) return;
     try {
+      // One settings write: a second updateSettings right after connecting
+      // remounts the workspace runtime and suspends the connection we just
+      // established (the project screen then reads "Disconnected").
       await switchConnection({
         serverUrl: buildRelayServerUrl(relay.relayUrl, host.id),
         username: '',
         password: '',
         connect: undefined,
-      });
-      updateSettings({
         relay: { ...relay, hostId: host.id, hostName: host.name },
       });
-      router.replace(!onboardingCompleted || onboardingActive ? '/onboarding/ai' : '/(tabs)/projects');
-    } finally {
+      navigationTarget.current = !onboardingCompleted || onboardingActive ? '/onboarding/ai' : '/(tabs)/projects';
+      setPendingNavigation(true);
+    } catch {
+      setSelectionError(true);
       setSelecting(undefined);
     }
   }
+
+  // Runs after the settings update has been committed and the dialog has
+  // unmounted, so the navigator never swaps screens mid-modal.
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    const target = navigationTarget.current;
+    if (!target) return;
+    // No timer and no state reset here: resetting `pendingNavigation` would
+    // re-run this effect and cancel the navigation in the cleanup.
+    router.replace(target);
+  }, [pendingNavigation, router]);
 
   async function selectHost(host: RelayHost) {
     if (!relay || selecting) return;

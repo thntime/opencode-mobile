@@ -94,7 +94,7 @@ afterEach(() => {
 describe('relay E2E requests', () => {
   beforeEach(() => setHostKey('host-a', hostKey));
 
-  it('encrypts a non-empty body as text/plain base64', async () => {
+  it('encrypts a non-empty body and keeps the caller content type', async () => {
     const body = JSON.stringify({ message: '你好', role: 'user' });
     await fetchConnection('https://relay.example.test/relay/host-a/api/session', {
       method: 'POST',
@@ -104,7 +104,7 @@ describe('relay E2E requests', () => {
 
     const init = transport.mock.calls[0][1] as RequestInit;
     const headers = new Headers(init.headers);
-    expect(headers.get('content-type')).toBe('text/plain');
+    expect(headers.get('content-type')).toBe('application/json');
     expect(typeof init.body).toBe('string');
     expect(decoder.decode(decryptBody(init.body as string, hostKey))).toBe(body);
     expect(headers.get('authorization')).toBe('Bearer jwt-token');

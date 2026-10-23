@@ -26,6 +26,14 @@ const decoder = new TextDecoder();
 const hostKey = new Uint8Array(32).fill(5);
 const otherKey = new Uint8Array(32).fill(6);
 const fromHex = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+// Ciphertext frames carry the original opcode as the first plaintext byte.
+const sealText = (text: string, key: Uint8Array) => {
+  const body = encoder.encode(text);
+  const framed = new Uint8Array(body.length + 1);
+  framed[0] = 1;
+  framed.set(body, 1);
+  return encryptFrame(framed, key);
+};
 
 class FakeSocket {
   binaryType = 'blob';
@@ -85,10 +93,10 @@ describe('relay E2E terminal frames', () => {
     wrapped.onmessage = (event) => seen.push(event.data);
 
     expect(socket.binaryType).toBe('arraybuffer');
-    socket.receive(encryptFrame(encoder.encode('$ ls\r\n'), hostKey));
+    socket.receive(sealText('$ ls\r\n', hostKey));
 
     expect(seen).toHaveLength(1);
-    expect(decoder.decode(new Uint8Array(seen[0] as ArrayBuffer))).toBe('$ ls\r\n');
+    expect(seen[0]).toBe('$ ls\r\n');
   });
 
   it('decrypts frames for addEventListener consumers', () => {
@@ -98,13 +106,13 @@ describe('relay E2E terminal frames', () => {
     const listener = (event: MessageEvent) => seen.push(event.data);
     wrapped.addEventListener('message', listener as unknown as EventListener);
 
-    socket.receive(encryptFrame(encoder.encode('$ pwd\r\n'), hostKey));
+    socket.receive(sealText('$ pwd\r\n', hostKey));
 
     expect(seen).toHaveLength(1);
-    expect(decoder.decode(new Uint8Array(seen[0] as ArrayBuffer))).toBe('$ pwd\r\n');
+    expect(seen[0]).toBe('$ pwd\r\n');
 
     wrapped.removeEventListener('message', listener as unknown as EventListener);
-    socket.receive(encryptFrame(encoder.encode('after'), hostKey));
+    socket.receive(sealText('after', hostKey));
     expect(seen).toHaveLength(1);
   });
 
@@ -116,7 +124,9 @@ describe('relay E2E terminal frames', () => {
 
     expect(socket.sent).toHaveLength(1);
     expect(typeof socket.sent[0]).not.toBe('string');
-    expect(decoder.decode(decryptFrame(socket.sent[0] as Uint8Array, hostKey))).toBe('ls\r');
+    const plain = decryptFrame(socket.sent[0] as Uint8Array, hostKey);
+    expect(plain[0]).toBe(1);
+    expect(decoder.decode(plain.subarray(1))).toBe('ls\r');
   });
 
   it('decrypts a frame produced by the Go tunnel client', () => {
@@ -126,14 +136,14 @@ describe('relay E2E terminal frames', () => {
     const seen: unknown[] = [];
     wrapped.onmessage = (event) => seen.push(event.data);
 
-    // `encryptStreamPayload` output for `\0{"cursor":42}`.
-    socket.receive(fromHex('18cbc2424d7208b600a4bb84838257d4d23a36902640fedee0b50b501b19be5a203f59b1d9eed51c6de3'));
+    // Go `encryptStreamPayload` output for opcode 1 + `\0{"cursor":42}`.
+    socket.receive(fromHex('000102030405060708090a0b853ab7501fc1d528e5aa65432c17751e1d1efa659359ba6956714a157e2c18'));
 
     expect(seen).toHaveLength(1);
-    expect(Array.from(new Uint8Array(seen[0] as ArrayBuffer))).toEqual(Array.from(fromHex('007b22637572736f72223a34327d')));
+    expect(seen[0]).toBe('\u0000{"cursor":42}');
   });
 
-  it('passes text frames through without decryption', () => {
+  it('rejects a plaintext frame instead of rendering it', () => {
     const socket = fake();
     const wrapped = encryptTerminalSocket(socket as unknown as WebSocket, hostKey);
     const seen: unknown[] = [];
@@ -141,7 +151,8 @@ describe('relay E2E terminal frames', () => {
 
     socket.receive('plain');
 
-    expect(seen).toEqual(['plain']);
+    expect(seen).toEqual([]);
+    expect(socket.closed?.code).toBe(1011);
   });
 
   it('isolates throwing handlers so the remaining listeners still run', () => {
@@ -154,7 +165,7 @@ describe('relay E2E terminal frames', () => {
     wrapped.onmessage = () => { throw failure; };
     wrapped.addEventListener('message', (event) => seen.push(event.data));
 
-    socket.receive(encryptFrame(encoder.encode('$ ls\r\n'), hostKey));
+    socket.receive(sealText('$ ls\r\n', hostKey));
 
     // DOM EventTarget semantics: one bad listener neither stops its siblings
     // nor tears down the socket.
@@ -172,11 +183,11 @@ describe('relay E2E terminal frames', () => {
     const listener = (event: MessageEvent) => seen.push(event.data);
     wrapped.addEventListener('message', listener as unknown as EventListener, { once: true });
 
-    socket.receive(encryptFrame(encoder.encode('first'), hostKey));
-    socket.receive(encryptFrame(encoder.encode('second'), hostKey));
+    socket.receive(sealText('first', hostKey));
+    socket.receive(sealText('second', hostKey));
 
     expect(seen).toHaveLength(1);
-    expect(decoder.decode(new Uint8Array(seen[0] as ArrayBuffer))).toBe('first');
+    expect(seen[0]).toBe('first');
   });
 
   it('ignores the capture flag because the encrypted socket has a single target', () => {
@@ -186,7 +197,7 @@ describe('relay E2E terminal frames', () => {
     const listener = (event: MessageEvent) => seen.push(event.data);
     wrapped.addEventListener('message', listener as unknown as EventListener, { capture: true });
 
-    socket.receive(encryptFrame(encoder.encode('$ pwd\r\n'), hostKey));
+    socket.receive(sealText('$ pwd\r\n', hostKey));
 
     expect(seen).toHaveLength(1);
   });
@@ -197,14 +208,14 @@ describe('relay E2E terminal frames', () => {
     const seen: unknown[] = [];
     wrapped.onmessage = (event) => seen.push(event.data);
 
-    socket.receive(encryptFrame(encoder.encode('poisoned'), otherKey));
+    socket.receive(sealText('poisoned', otherKey));
 
     expect(socket.closed?.code).toBe(1011);
     expect(socket.closed?.reason).toMatch(/decrypt/i);
     expect(seen).toHaveLength(0);
 
     // A closed session must not keep forwarding frames.
-    socket.receive(encryptFrame(encoder.encode('after'), hostKey));
+    socket.receive(sealText('after', hostKey));
     expect(seen).toHaveLength(0);
   });
 });
@@ -219,7 +230,9 @@ describe('terminal websocket encryption switch', () => {
     expect(socket.options).toEqual({ headers: { Authorization: 'Bearer jwt' } });
 
     socket.send('x');
-    expect(decoder.decode(decryptFrame(socket.sent[0] as Uint8Array, hostKey))).toBe('x');
+    const plain = decryptFrame(socket.sent[0] as Uint8Array, hostKey);
+    expect(plain[0]).toBe(1);
+    expect(decoder.decode(plain.subarray(1))).toBe('x');
   });
 
   it('leaves the socket untouched when the passphrase was skipped', () => {

@@ -102,6 +102,18 @@ export function useOpencodePersistence({
         }
         setSettings({ ...defaultSettings, ...persistedSettings, password });
 
+        // The SDK builds clients (and SSE headers) from a synchronous token
+        // mirror. Fill it during hydration so a cold start never sends a
+        // request without `Authorization`.
+        if (persistedSettings?.relay) {
+          try {
+            const { getRelayToken } = await import('@/lib/relay/auth');
+            await getRelayToken();
+          } catch (reason) {
+            console.warn('Could not hydrate relay token.', reason);
+          }
+        }
+
         await load(CHAT_PREFERENCES_STORAGE_KEY, parseChatPreferences, (parsed) => {
           setChatPreferences((current) => ({
             ...defaultChatPreferences,

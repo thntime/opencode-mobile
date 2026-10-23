@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "app.getopencode.updates.opencode-updates-release-30:/animator/fragment_fade_enter.xml",
+        "source": "app.getopencode.updates.opencode-updates-fragment-1.5.4-19:/animator/fragment_fade_enter.xml"
+    },
+    {
+        "merged": "app.getopencode.updates.opencode-updates-release-30:/animator/fragment_close_exit.xml",
+        "source": "app.getopencode.updates.opencode-updates-fragment-1.5.4-19:/animator/fragment_close_exit.xml"
+    },
+    {
+        "merged": "app.getopencode.updates.opencode-updates-release-30:/animator/fragment_fade_exit.xml",
+        "source": "app.getopencode.updates.opencode-updates-fragment-1.5.4-19:/animator/fragment_fade_exit.xml"
+    },
+    {
+        "merged": "app.getopencode.updates.opencode-updates-release-30:/animator/fragment_open_exit.xml",
+        "source": "app.getopencode.updates.opencode-updates-fragment-1.5.4-19:/animator/fragment_open_exit.xml"
+    },
+    {
+        "merged": "app.getopencode.updates.opencode-updates-release-30:/animator/fragment_close_enter.xml",
+        "source": "app.getopencode.updates.opencode-updates-fragment-1.5.4-19:/animator/fragment_close_enter.xml"
+    },
+    {
+        "merged": "app.getopencode.updates.opencode-updates-release-30:/animator/fragment_open_enter.xml",
+        "source": "app.getopencode.updates.opencode-updates-fragment-1.5.4-19:/animator/fragment_open_enter.xml"
+    }
+]
