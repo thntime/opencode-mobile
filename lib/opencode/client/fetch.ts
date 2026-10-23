@@ -130,6 +130,16 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
   let received = await send(preparedInit);
   recordRequest();
   if (settings?.relay && received.status === 401) {
+    // A challenge means the 401 came from the OpenCode host behind the Relay,
+    // not from the Relay itself: the host wants HTTP Basic and the tunnel
+    // client has no credentials for it. That is a host-side configuration
+    // problem, so the Relay session and the selected host must survive it.
+    const upstreamChallenge = received.headers.get('www-authenticate');
+    if (upstreamChallenge) {
+      throw new Error(
+        '主机要求认证（401）：请在电脑端为 OpenCode 配置访问密码（~/.opencode-tunnel/opencode.json），或关闭 OpenCode 的 server password。',
+      );
+    }
     // One refresh and one replay. A second 401 means the fresh token is also
     // rejected, so the session is unrecoverable in place.
     const replayInit = await replayRelayInit(settings.relay, preparedInit);

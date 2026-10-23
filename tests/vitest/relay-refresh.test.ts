@@ -337,6 +337,28 @@ describe('fetchConnection relay refresh', () => {
     expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toEqual({ relayUrl: RELAY_URL, account: ACCOUNT });
   });
 
+  it('treats an upstream 401 challenge as a host auth problem and keeps the Relay session', async () => {
+    setRelaySessionPassword('secret');
+    h.secure.set(TOKEN_KEY, 'expired-token');
+    // The Relay forwards upstream headers verbatim, so a Basic challenge means
+    // the OpenCode host rejected the tunnel, not the Relay account.
+    const transport = vi.fn(async () => new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json', 'www-authenticate': 'Basic realm="opencode"' },
+    }));
+    vi.stubGlobal('fetch', transport);
+    persistSettings();
+
+    const error = await fetchConnection(`${RELAY_URL}/relay/host-a/api/info`, undefined, relaySettings()).catch((reason: unknown) => reason);
+
+    expect((error as Error).message).toContain('主机要求认证');
+    // No refresh, no replay, no session cleanup: the Relay token was never the problem.
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(await getRelayToken()).toBe('expired-token');
+    expect(h.tokenDeletes).toBe(0);
+    expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay.hostId).toBe('host-a');
+  });
+
   it('raises relay_reauth_required and clears the session when the refresh fails', async () => {
     setRelaySessionPassword('wrong');
     h.secure.set(TOKEN_KEY, 'expired-token');
