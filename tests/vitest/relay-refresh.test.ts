@@ -4,6 +4,7 @@ import { fetchConnection } from '@/lib/opencode/client/fetch';
 import { decryptBody } from '@/lib/relay/crypto';
 import { clearHostKeys, getHostKey, setHostKey } from '@/lib/relay/keywrap';
 import {
+  RelayHostAuthRequiredError,
   RelayLoginRequiredError,
   RelayReauthRequiredError,
   RelayUnreachableError,
@@ -351,12 +352,67 @@ describe('fetchConnection relay refresh', () => {
 
     const error = await fetchConnection(`${RELAY_URL}/relay/host-a/api/info`, undefined, relaySettings()).catch((reason: unknown) => reason);
 
+    expect(error).toBeInstanceOf(RelayHostAuthRequiredError);
+    expect((error as RelayHostAuthRequiredError).code).toBe('relay_host_auth_required');
     expect((error as Error).message).toContain('主机要求认证');
     // No refresh, no replay, no session cleanup: the Relay token was never the problem.
     expect(transport).toHaveBeenCalledTimes(1);
     expect(await getRelayToken()).toBe('expired-token');
     expect(h.tokenDeletes).toBe(0);
     expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay.hostId).toBe('host-a');
+  });
+
+  it('keeps the session when the replayed request is challenged by the upstream host', async () => {
+    setRelaySessionPassword('secret');
+    h.secure.set(TOKEN_KEY, 'expired-token');
+    const fresh = futureToken();
+    const transport = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/api/login')) return loginResponse(fresh);
+      const auth = new Headers(init?.headers).get('Authorization');
+      if (auth === `Bearer ${fresh}`) {
+        // The replay carries a valid Relay token, yet the host behind it still
+        // asks for Basic credentials. That is a host configuration problem.
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json', 'www-authenticate': 'Basic realm="opencode"' },
+        });
+      }
+      return json({ error: 'unauthorized' }, 401);
+    });
+    vi.stubGlobal('fetch', transport);
+    persistSettings();
+
+    const error = await fetchConnection(`${RELAY_URL}/relay/host-a/api/info`, undefined, relaySettings()).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(RelayHostAuthRequiredError);
+    expect((error as RelayHostAuthRequiredError).code).toBe('relay_host_auth_required');
+    expect((error as Error).message).toContain('主机要求认证');
+    expect(transport).toHaveBeenCalledTimes(3);
+    // The fresh token and the host selection must survive the replay challenge.
+    expect(await getRelayToken()).toBe(fresh);
+    expect(h.tokenDeletes).toBe(0);
+    expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay.hostId).toBe('host-a');
+  });
+
+  it('still treats a Relay 401 without a challenge as a dead session', async () => {
+    setRelaySessionPassword('secret');
+    h.secure.set(TOKEN_KEY, 'expired-token');
+    const fresh = futureToken();
+    const transport = vi.fn(async (input: RequestInfo | URL) => (
+      String(input).endsWith('/api/login') ? loginResponse(fresh) : json({ error: 'unauthorized' }, 401)
+    ));
+    vi.stubGlobal('fetch', transport);
+    persistSettings();
+
+    const error = await fetchConnection(`${RELAY_URL}/relay/host-a/api/info`, undefined, relaySettings()).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(RelayReauthRequiredError);
+    expect((error as RelayReauthRequiredError).code).toBe('relay_reauth_required');
+    expect((error as RelayReauthRequiredError).replayed).toBe(true);
+    expect(transport).toHaveBeenCalledTimes(3);
+    expect(await getRelayToken()).toBeUndefined();
+    expect(h.tokenDeletes).toBe(1);
+    expect(JSON.parse(h.storage.get(SETTINGS_KEY) as string).relay).toEqual({ relayUrl: RELAY_URL, account: ACCOUNT });
   });
 
   it('raises relay_reauth_required and clears the session when the refresh fails', async () => {

@@ -37,6 +37,9 @@ export default function RelayHostsScreen() {
   const [unlockTarget, setUnlockTarget] = useState<RelayHost>();
   const [error, setError] = useState(false);
   const [selectionError, setSelectionError] = useState(false);
+  // A host that rejects the tunnel with a 401 challenge explains itself: show
+  // that concrete message instead of the generic "could not open" copy.
+  const [selectionErrorMessage, setSelectionErrorMessage] = useState<string>();
   // Navigation after a host pick is deferred to an effect: unmounting the
   // passphrase modal and replacing the route in the same frame trips a Fabric
   // mount error on some Android builds (addViewAt index mismatch).
@@ -59,6 +62,7 @@ export default function RelayHostsScreen() {
     setRefreshing(true);
     setError(false);
     setSelectionError(false);
+    setSelectionErrorMessage(undefined);
     try {
       setHosts(await fetchRelayHosts(relay.relayUrl, relay.account));
     } catch (reason) {
@@ -97,16 +101,26 @@ export default function RelayHostsScreen() {
       // One settings write: a second updateSettings right after connecting
       // remounts the workspace runtime and suspends the connection we just
       // established (the project screen then reads "Disconnected").
-      await switchConnection({
+      const result = await switchConnection({
         serverUrl: buildRelayServerUrl(relay.relayUrl, host.id),
         username: '',
         password: '',
         connect: undefined,
         relay: { ...relay, hostId: host.id, hostName: host.name },
       });
+      if (result.status === 'error' && result.kind === 'host-auth') {
+        // The host asks for its own Basic credentials. The Relay session and
+        // host selection are still valid, so stay on this screen with the
+        // concrete reason; the list stays tappable for a retry.
+        setSelectionErrorMessage(result.message);
+        setSelectionError(true);
+        setSelecting(undefined);
+        return;
+      }
       navigationTarget.current = !onboardingCompleted || onboardingActive ? '/onboarding/ai' : '/(tabs)/projects';
       setPendingNavigation(true);
     } catch {
+      setSelectionErrorMessage(undefined);
       setSelectionError(true);
       setSelecting(undefined);
     }
@@ -194,7 +208,9 @@ export default function RelayHostsScreen() {
           <HelperText testID="relay-hosts-error" type="error" visible>{t('relay:hosts.loadError')}</HelperText>
         ) : null}
         {selectionError ? (
-          <HelperText testID="relay-host-select-error" type="error" visible>{t('relay:hosts.selectError')}</HelperText>
+          <HelperText testID="relay-host-select-error" type="error" visible>
+            {selectionErrorMessage ?? t('relay:hosts.selectError')}
+          </HelperText>
         ) : null}
         <View style={styles.listWrap} pointerEvents={selecting ? 'none' : 'auto'}>
           <RelayHostList hosts={hosts} refreshing={refreshing} onRefresh={() => void refresh()} onSelect={(host) => void selectHost(host)} />

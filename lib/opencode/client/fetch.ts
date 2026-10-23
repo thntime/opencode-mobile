@@ -5,7 +5,7 @@ import { recordBytes, recordRequest } from '../data-usage';
 import { getConnectCredentialError } from '@/lib/connect';
 import { isRelayConnectionTarget } from '@/lib/relay/connection-mode';
 import { decryptRelayResponse, encryptRelayRequest, relayHostKeyFor } from '@/lib/relay/fetch-e2e';
-import { RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayRefreshError, relayTokenExpiryHint } from '@/lib/relay/refresh';
+import { RelayHostAuthRequiredError, RelayReauthRequiredError, clearRelaySession, refreshRelayToken, relayRefreshError, relayTokenExpiryHint } from '@/lib/relay/refresh';
 import { cachedRelayToken } from '@/lib/relay/token-cache';
 import { joinUrlPath } from './url';
 import type { OpencodeConnectionSettings } from './types';
@@ -136,9 +136,7 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
     // problem, so the Relay session and the selected host must survive it.
     const upstreamChallenge = received.headers.get('www-authenticate');
     if (upstreamChallenge) {
-      throw new Error(
-        '主机要求认证（401）：请在电脑端为 OpenCode 配置访问密码（~/.opencode-tunnel/opencode.json），或关闭 OpenCode 的 server password。',
-      );
+      throw new RelayHostAuthRequiredError();
     }
     // One refresh and one replay. A second 401 means the fresh token is also
     // rejected, so the session is unrecoverable in place.
@@ -149,6 +147,12 @@ export async function fetchConnection(input: RequestInfo | URL, init?: RequestIn
     received = await send(replayInit);
     recordRequest();
     if (received.status === 401) {
+      // The replay carried a freshly minted Relay token, so a challenge now can
+      // only come from the OpenCode host behind the Relay. Keep the session;
+      // only a plain 401 means the Relay rejected the new token too.
+      if (received.headers.get('www-authenticate')) {
+        throw new RelayHostAuthRequiredError();
+      }
       await clearRelaySession();
       throw new RelayReauthRequiredError('rejected', true);
     }

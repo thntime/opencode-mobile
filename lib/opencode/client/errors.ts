@@ -4,10 +4,26 @@ export type ConnectionFailureKind =
   | 'timeout'
   | 'offline'
   | 'auth'
+  | 'host-auth'
   | 'entitlement'
   | 'tunnel-startup'
   | 'server-incompatible'
   | 'unknown';
+
+const RELAY_HOST_AUTH_CODE = 'relay_host_auth_required';
+
+// SDK wrappers sometimes move the original error under `cause`, so the code is
+// looked up along the same chain `describeError` walks.
+function hasFailureCode(error: unknown, code: string) {
+  const seen = new Set<unknown>();
+  while (error && !seen.has(error)) {
+    seen.add(error);
+    if (typeof error !== 'object') return false;
+    if ((error as { code?: unknown }).code === code) return true;
+    error = (error as { cause?: unknown }).cause;
+  }
+  return false;
+}
 
 function describeError(error: unknown) {
   const seen = new Set<unknown>();
@@ -36,6 +52,9 @@ const TIMEOUT_PATTERN = /\b(?:ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|ECON
 // Recovery policy is keyed on this classification: auth/entitlement failures
 // stop automatic retries, everything else stays bounded and retryable.
 export function classifyConnectionFailure(error: unknown): ConnectionFailureKind {
+  // The host-auth message contains "（401）", so this must run before any status
+  // or message inference: the Relay session itself is still valid.
+  if (hasFailureCode(error, RELAY_HOST_AUTH_CODE)) return 'host-auth';
   const { status, message } = describeError(error);
   if (TUNNEL_STARTUP_PATTERN.test(message)) return 'tunnel-startup';
   const explicitStatus = status ?? (/\b401\b/.test(message) ? 401 : /\b403\b/.test(message) ? 403 : undefined);
@@ -52,10 +71,13 @@ export function classifyConnectionFailure(error: unknown): ConnectionFailureKind
 }
 
 export function isRetryableConnectionFailure(kind: ConnectionFailureKind) {
-  return kind !== 'auth' && kind !== 'entitlement' && kind !== 'server-incompatible';
+  // Retrying cannot fix a host-side Basic-auth configuration either.
+  return kind !== 'auth' && kind !== 'entitlement' && kind !== 'server-incompatible' && kind !== 'host-auth';
 }
 
 export function isAuthConnectionFailure(kind: ConnectionFailureKind) {
+  // `host-auth` is not a rejected credential: it must not trigger a sign-out,
+  // a token refresh or dropping the selected host.
   return kind === 'auth' || kind === 'entitlement';
 }
 

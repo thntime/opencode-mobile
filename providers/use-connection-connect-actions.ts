@@ -203,6 +203,9 @@ export function useConnectionConnectActions({
       // the in-memory host so the root guard redirects to the login screen.
       // Some SDK wrappers lose the error `code`, so a classified auth failure
       // is treated the same way on a relay connection.
+      // `host-auth` is deliberately excluded: the OpenCode host asking for its
+      // own Basic credentials is a host configuration problem, not a dead Relay
+      // session, so the token and the selected host must survive it.
       if (targetSettings.relay && (isRelayReauthRequired(failure) || classifyConnectionFailure(failure) === 'auth')) dropRelayHost();
       const failed: ConnectionState = {
         status: 'error',
@@ -276,6 +279,9 @@ export function useConnectionConnectActions({
   // (or for a direct server) does the provider surface recovery. Returning
   // true tells the realtime loop to reconnect with the fresh token.
   const handleStreamAuthFailure = useCallback(async (kind: ConnectionFailureKind): Promise<boolean> => {
+    // An upstream host challenge is not a rejected Relay/Cloud Link credential:
+    // refreshing or dropping the host cannot fix it, so never reconnect.
+    if (kind === 'host-auth') return false;
     const current = settingsRef.current;
     if (current.connect) {
       void connect().catch(() => undefined);

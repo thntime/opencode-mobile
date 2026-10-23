@@ -50,6 +50,19 @@ export class RelayLoginRequiredError extends Error {
   }
 }
 
+// The OpenCode host behind the Relay answered 401 with an HTTP Basic challenge:
+// the tunnel client has no credentials for the host. This is a host-side
+// configuration problem, so the Relay session, the token and the host selection
+// must all survive it.
+export class RelayHostAuthRequiredError extends Error {
+  readonly code = 'relay_host_auth_required';
+
+  constructor() {
+    super('主机要求认证（401）：请在电脑端 ~/.opencode-tunnel/opencode.json 配置 auth_user / auth_password（与 OpenCode 的 server password 一致），然后重启 tunnel-client；或关闭 OpenCode 的 server password。');
+    this.name = 'RelayHostAuthRequiredError';
+  }
+}
+
 // The Relay could not be reached at all (timeout, DNS, proxy). The session is
 // still valid, so this must never clear the token or drop the host.
 export class RelayUnreachableError extends Error {

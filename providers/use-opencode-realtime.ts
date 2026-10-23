@@ -147,6 +147,14 @@ export function useOpencodeRealtime({ catalogClient, activeProjectPath, connecte
           continue;
         }
         const failureKind = classifyConnectionFailure(streamError ?? new Error('OpenCode event stream ended.'));
+        if (failureKind === 'host-auth') {
+          // The OpenCode host wants its own Basic credentials. Neither a token
+          // refresh nor a reconnect can change that, so stop instead of
+          // retrying the stream in a tight loop.
+          setEventStreamStatus('error');
+          await latest.current.onFatalError?.(failureKind);
+          break;
+        }
         if (isAuthConnectionFailure(failureKind)) {
           // A relay JWT can be refreshed and the stream rebuilt in place. The
           // provider returns true when recovery succeeded; direct and Cloud Link
