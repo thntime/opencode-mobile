@@ -26,7 +26,8 @@ permissions:
 
 concurrency:
   group: android-apk-${{ github.ref }}
-  cancel-in-progress: true
+  # 发布在途不可被杀：tag 运行不取消，只有非 tag 触发允许取消上一次运行。
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   apk:
@@ -139,9 +140,18 @@ jobs:
           set -eo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
-          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f | sort -V | tail -1)
+          BUILD_TOOLS=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+          APKSIGNER=$(find "$BUILD_TOOLS" -name apksigner -type f | head -1)
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
+          AAPT=$(find "$BUILD_TOOLS" -name aapt -type f | head -1)
+          test -n "$AAPT"
+          PACKAGE_LINE=$("$AAPT" dump badging "$APK" | grep "^package:")
+          echo "$PACKAGE_LINE"
+          echo "$PACKAGE_LINE" | grep -q "name='${EXPO_ANDROID_PACKAGE}'" || {
+            echo "::error::APK applicationId does not match EXPO_ANDROID_PACKAGE=${EXPO_ANDROID_PACKAGE}"
+            exit 1
+          }
 
       - name: Prepare artifact
         shell: bash
@@ -189,5 +199,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: opencode-mobile.apk
+          files: ${{ env.APK_NAME }}

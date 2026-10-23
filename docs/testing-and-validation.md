@@ -240,7 +240,7 @@ so Remove/Reset is not offered for a repository's own checkout.
 - it has no `cancel-in-progress`, so a release in flight is never killed mid-upload
 
 Release automation in `build.yml`:
-- APK/IPA workflow artifacts expire after 1 day; the permanent copy is the GitHub Release asset, Play Store upload, or TestFlight upload
+- APK/IPA workflow artifacts expire after 1 day; the permanent copy is the GitHub Release asset (`opencode-mobile.apk` from `android-apk.yml`) or the TestFlight upload
 
 The `validate` gate runs:
 

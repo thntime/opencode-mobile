@@ -77,9 +77,9 @@ trusted environment, and sandbox configuration. See
 [F-Droid and FOSS builds](fdroid.md) for the FOSS variant's scope and distribution.
 
 **Release Automation**:
-- Pushes to `main` run the validation gate only; the Android release jobs (`android-release`, `foss-release`) run on `v*` tags, or on a manual **Build** dispatch with `build_android: true` when a sideload APK is needed
-- Release builds upload APKs as the `android-release-artifacts` artifact (1-day retention); `v*` tag runs also build the release AAB for the Play Store upload
-- The GitHub Release asset and production Play Store upload happen only on `v*` tags
+- Pushes to `main` run the validation gate only; the Android build jobs (`android-release`, `foss-release`) run on `v*` tags, or on a manual **Build** dispatch with `build_android: true` to validate a sideload build and the native sharing flow
+- Those jobs build and verify the signed APK/AAB and run the emulator checks, but they do not publish anything: no GitHub Release asset and no Play upload
+- The GitHub Release asset is produced only by `.github/workflows/android-apk.yml` on `v*` tags, as `opencode-mobile.apk`
 - Release ABIs are trimmed per ref: `v*` tags build `armeabi-v7a,arm64-v8a`; other builds build `arm64-v8a` only. Override locally with `ANDROID_RELEASE_ABIS`. See [Android Build / Release Notes](integrations-and-operations.md#release-abis-and-gradle-memory)
 
 ### iOS Builds

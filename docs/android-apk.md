@@ -7,7 +7,7 @@
 | 推送 `v*` tag | 已签名 APK，资产名固定为 `opencode-mobile.apk` | 是 |
 | `workflow_dispatch` 手动触发 | workflow artifact，`opencode-mobile-relay-<运行号>.apk` | 否 |
 
-`.github/workflows/build.yml` 只调用 `validate.yml` 做发布前校验，不构建 APK、不写 Release、不上传 Play。这样同一个 tag 不会触发两次构建。
+`.github/workflows/build.yml` 保留原有的 validate 与 APK/AAB 构建（含 emulator 原生校验），但不写 Release、不上传 Play。GitHub Release 的 APK 资产只由本工作流产生，避免同一 tag 出现两个上传者。
 
 ## 一次性准备：签名密钥
 

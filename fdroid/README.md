@@ -12,7 +12,8 @@ See [`docs/fdroid.md`](../docs/fdroid.md) for how the FOSS variant is produced.
 1. Ensure the upstream source commit contains the FOSS support and complete
    `en-US` Fastlane metadata. Keep the Firebase stub revision in the FOSS build
    script and the template's `firebase-stub` srclib in sync.
-   Releases use `v*` tags; the `foss-release` CI job attaches the FOSS APK.
+   Releases use `v*` tags; the release workflow publishes the production APK,
+   and the FOSS APK is built locally with `npm run build:foss:android`.
 2. Fork and clone [fdroiddata](https://gitlab.com/fdroid/fdroiddata).
 3. Copy `fdroiddata/app.getopencode.fdroid.yml` into the fork at
    `metadata/app.getopencode.fdroid.yml`, and set `commit:` to that release's

@@ -55,10 +55,10 @@ It then applies `scripts/foss-prepare.mjs` and builds with the FOSS variant:
    `EXPO_PUBLIC_FOSS=1`, and app id `app.getopencode.fdroid`
 
 Signing uses the same `ANDROID_KEYSTORE_*` environment variables as
-`npm run build:android`. On CI the `foss-release` job builds the variant, asserts
-the APK contains no Play Billing, ML Kit, install-referrer, or
-`play-services-code-scanner` libraries, and attaches
-`opencode-mobile-fdroid.apk` to `v*` GitHub releases.
+`npm run build:android`. On CI the `foss-release` job builds the variant and
+asserts the APK contains no Play Billing, ML Kit, install-referrer, or
+`play-services-code-scanner` libraries. It does not publish the APK: only the
+production `opencode-mobile.apk` is attached to `v*` releases.
 The free stub classes keep the `com.google.firebase` package name; that namespace
 alone does not indicate that proprietary Firebase code is present. The
 preparation script fails if the supplied stub source classes are missing.
@@ -89,8 +89,9 @@ There is no self-hosted F-Droid repo. The FOSS build is distributed two ways:
   the first F-Droid publication if the upstream signing key must be retained;
   matching the JDK alone does not establish reproducibility. See
   [F-Droid's reproducible-build guide](https://f-droid.org/docs/Reproducible_Builds/).
-- **GitHub releases** — the `foss-release` CI job attaches
-  `opencode-mobile-fdroid.apk` to `v*` releases for direct sideloading.
+- **GitHub releases** — only the production APK (`opencode-mobile.apk`) is
+  attached to `v*` releases by `android-apk.yml`. Build the FOSS APK locally
+  with `npm run build:foss:android` for sideloading.
 
 Anti-features: voice input relies on the device's system speech recognizer,
 which on many devices is supplied by Google. If F-Droid reviewers apply

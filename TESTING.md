@@ -38,7 +38,8 @@ sync when the gate changes.
 `ios-release` also builds and signs the iOS archive after `validate`; the Android
 release jobs (`android-release`, `foss-release`) run after `validate` on `v*` tags
 or a manual dispatch with `build_android: true`. Actions artifacts expire after a
-few days; the permanent copy is the GitHub Release asset or store upload.
+few days; the permanent copy is the GitHub Release asset (`opencode-mobile.apk`
+from `android-apk.yml`) or the TestFlight upload.
 
 ## Why This Repo Uses Flow Tests
 
@@ -124,7 +125,8 @@ npm run test:fake-server
 The app is built in `EXPO_PUBLIC_E2E_MODE=1` for CI flow tests so notification and
 voice bootstrap side effects do not interfere with deterministic automation.
 
-Android native validation happens on every CI run in the `android-release` job in
+Android native validation happens on `v*` tags and manual dispatches with
+`build_android: true` in the `android-release` job in
 `.github/workflows/build.yml`; the local `npm run build:development:android`
 command remains available for manual use.
 
