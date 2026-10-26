@@ -173,8 +173,8 @@ describe('scanForProjects', () => {
     expect(calls).toEqual(['/root']);
   });
 
-  it('does not report truncation when the entry limit lands exactly on the last entry', async () => {
-    const { listDirectory } = fakeTree({
+  it('reports truncation when the entry limit lands on the last entry but a subdirectory is still pending', async () => {
+    const { listDirectory, calls } = fakeTree({
       '/root': dirs('.opencode', 'a'),
       '/root/a': dirs('.opencode'),
     });
@@ -186,6 +186,49 @@ describe('scanForProjects', () => {
     });
 
     expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root']);
+    // The root listing fit exactly, but `/root/a` was collected and never
+    // listed, so the result is incomplete.
+    expect(result.truncated).toBe(true);
+    expect(result.reason).toBe('max-entries');
+    expect(calls).toEqual(['/root']);
+    expect(calls).not.toContain('/root/a');
+  });
+
+  it('does not report truncation when the entry limit lands exactly on the last entry with nothing pending', async () => {
+    const { listDirectory } = fakeTree({
+      '/root': dirs('.opencode'),
+    });
+
+    const result = await scanForProjects({
+      root: '/root',
+      listDirectory,
+      limits: { maxEntries: 1 },
+    });
+
+    expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root']);
+    expect(result.truncated).toBe(false);
+    expect(result.reason).toBeUndefined();
+  });
+
+  it('finishes without truncation when the last listing lands exactly on the deadline', async () => {
+    // The first five clock reads are the start, the two loop checks and the two
+    // remaining-time checks; the sixth is the check after the last outcome was
+    // applied, exactly at the deadline.
+    let reads = 0;
+    const { listDirectory, calls } = fakeTree({
+      '/root': dirs('a'),
+      '/root/a': dirs('.opencode'),
+    });
+
+    const result = await scanForProjects({
+      root: '/root',
+      listDirectory,
+      limits: { maxDurationMs: 100 },
+      now: () => (reads++ < 5 ? 0 : 100),
+    });
+
+    expect(calls).toEqual(['/root', '/root/a']);
+    expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root/a']);
     expect(result.truncated).toBe(false);
     expect(result.reason).toBeUndefined();
   });
@@ -243,7 +286,8 @@ describe('scanForProjects', () => {
 
     expect(elapsed).toBeLessThanOrEqual(200);
     expect(result.candidates).toEqual([]);
-    expect(result.truncated).toBe(false);
+    // A cancelled scan is always incomplete: the queue was abandoned.
+    expect(result.truncated).toBe(true);
     expect(result.reason).toBe('cancelled');
   });
 
@@ -258,7 +302,7 @@ describe('scanForProjects', () => {
 
     expect(result).toEqual({
       candidates: [],
-      truncated: false,
+      truncated: true,
       skippedForPermission: 0,
       failedReads: 0,
       reason: 'cancelled',
@@ -287,9 +331,40 @@ describe('scanForProjects', () => {
     });
 
     expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root/a']);
-    expect(result.truncated).toBe(false);
+    expect(result.truncated).toBe(true);
     expect(result.reason).toBe('cancelled');
     expect(calls).toEqual(['/root', '/root/a']);
+  });
+
+  it('sorts the candidates kept after cancellation like a completed scan', async () => {
+    const signal = { cancelled: false };
+    const { listDirectory, release } = deferredTree({
+      '/root': dirs('b', 'a'),
+      '/root/a': dirs('.opencode'),
+      '/root/b': dirs('.opencode'),
+    });
+
+    const scan = scanForProjects({
+      root: '/root',
+      listDirectory,
+      limits: { concurrency: 2 },
+      signal,
+    });
+    await flush();
+    release('/root');
+    await flush();
+    // Finish the lexically later directory first, then cancel while the other
+    // listing is still in flight.
+    release('/root/b');
+    await flush();
+    signal.cancelled = true;
+    release('/root/a');
+
+    const result = await scan;
+
+    expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root/a', '/root/b']);
+    expect(result.truncated).toBe(true);
+    expect(result.reason).toBe('cancelled');
   });
 
   it('counts 403 subdirectory failures as permission skips and keeps scanning', async () => {
@@ -316,6 +391,42 @@ describe('scanForProjects', () => {
     expect(result.truncated).toBe(false);
     expect(attempted).toContain('/root/bad');
     expect(calls).toContain('/root/good');
+  });
+
+  it('reads the status from a wrapped cause chain (V1 SDK shape)', async () => {
+    const { listDirectory: base } = fakeTree({
+      '/root': dirs('bad', 'good'),
+      '/root/good': dirs('.opencode'),
+    });
+    const listDirectory: ListDirectory = async (path) => {
+      if (path === '/root/bad') {
+        throw new Error('forbidden', { cause: { status: 403, body: { message: 'denied' } } });
+      }
+      return base(path);
+    };
+
+    const result = await scanForProjects({ root: '/root', listDirectory, limits: { concurrency: 1 } });
+
+    expect(result.skippedForPermission).toBe(1);
+    expect(result.failedReads).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('reads EACCES from a wrapped cause chain', async () => {
+    const { listDirectory: base } = fakeTree({
+      '/root': dirs('bad', 'good'),
+      '/root/good': dirs('.opencode'),
+    });
+    const listDirectory: ListDirectory = async (path) => {
+      if (path === '/root/bad') throw new Error('denied', { cause: { code: 'EACCES' } });
+      return base(path);
+    };
+
+    const result = await scanForProjects({ root: '/root', listDirectory, limits: { concurrency: 1 } });
+
+    expect(result.skippedForPermission).toBe(1);
+    expect(result.failedReads).toBe(0);
+    expect(result.truncated).toBe(false);
   });
 
   it('counts EACCES as a permission skip', async () => {

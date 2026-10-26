@@ -170,6 +170,68 @@ describe('project discovery service', () => {
     expect(result.truncated).toBe(false);
   });
 
+  it('classifies a V1 SDK wrapper status from the cause chain', async () => {
+    const list = vi.fn(async () => {
+      throw new Error('forbidden', { cause: { status: 403, body: { message: 'denied' } } });
+    });
+
+    await expect(buildScanListDirectory(v1Client(list))('/repo')).rejects.toMatchObject({
+      code: 'scan_directory_unreadable',
+      status: 403,
+    });
+  });
+
+  it('classifies V1 cause-chain permission failures for the root and subdirectories', async () => {
+    const denied = () => {
+      throw new Error('forbidden', { cause: { status: 403, body: { message: 'denied' } } });
+    };
+    const rootList = vi.fn(async () => denied());
+    const rootFailure = await scanForProjects({
+      root: '/repo',
+      listDirectory: buildScanListDirectory(v1Client(rootList)),
+    }).catch((error: unknown) => error);
+    expect(rootFailure).toMatchObject({ code: 'scan_directory_unreadable', status: 403 });
+
+    const list = vi.fn(async ({ path }: { path: string }) => {
+      if (path === 'denied') denied();
+      return {
+        data: path === ''
+          ? [{ name: 'denied', path: 'denied', type: 'directory' }, { name: 'good', path: 'good', type: 'directory' }]
+          : [{ name: '.opencode', path: '.opencode', type: 'directory' }],
+      };
+    });
+    const result = await scanForProjects({
+      root: '/repo',
+      listDirectory: buildScanListDirectory(v1Client(list)),
+      limits: { concurrency: 1 },
+    });
+
+    expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/repo/good']);
+    expect(result.skippedForPermission).toBe(1);
+    expect(result.failedReads).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('classifies a V1 cause-chain EACCES as a permission skip', async () => {
+    const list = vi.fn(async ({ path }: { path: string }) => {
+      if (path === 'denied') throw new Error('denied', { cause: { code: 'EACCES' } });
+      return {
+        data: path === ''
+          ? [{ name: 'denied', path: 'denied', type: 'directory' }, { name: 'good', path: 'good', type: 'directory' }]
+          : [{ name: '.opencode', path: '.opencode', type: 'directory' }],
+      };
+    });
+    const result = await scanForProjects({
+      root: '/repo',
+      listDirectory: buildScanListDirectory(v1Client(list)),
+      limits: { concurrency: 1 },
+    });
+
+    expect(result.skippedForPermission).toBe(1);
+    expect(result.failedReads).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
   it('classifies real service read failures by HTTP status', async () => {
     const list = vi.fn(async ({ location }: { location: { directory: string } }) => {
       if (location.directory === '/work/denied') throw Object.assign(new Error('denied'), { status: 403 });

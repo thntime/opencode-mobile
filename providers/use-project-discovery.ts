@@ -73,20 +73,27 @@ export function useProjectDiscovery() {
     const resolvedRoot = resolveScanRoot(client, root);
     const existingPaths = projectsFor(connectionId);
     const found: string[] = [];
+    // Once the scan settles (deadline, entry cap, cancellation) any listing that
+    // is still in flight must not keep reporting progress to the UI.
+    let settled = false;
 
-    return scanForProjects({
-      root: resolvedRoot,
-      existingPaths,
-      signal: options.signal,
-      listDirectory: async (path) => {
-        const entries = await listDirectory(path);
-        if (!options.signal?.cancelled && entries.some((item) => item.type === 'directory' && item.name === '.opencode')) {
-          found.push(path);
-          options.onProgress?.({ found: [...found] });
-        }
-        return entries;
-      },
-    });
+    try {
+      return await scanForProjects({
+        root: resolvedRoot,
+        existingPaths,
+        signal: options.signal,
+        listDirectory: async (path) => {
+          const entries = await listDirectory(path);
+          if (!settled && !options.signal?.cancelled && entries.some((item) => item.type === 'directory' && item.name === '.opencode')) {
+            found.push(path);
+            options.onProgress?.({ found: [...found] });
+          }
+          return entries;
+        },
+      });
+    } finally {
+      settled = true;
+    }
   }, [activeProjectFor, connections, contractFor, projectsFor]);
 
   const refreshProjects = useCallback(async (connectionId: string) => {

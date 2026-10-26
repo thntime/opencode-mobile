@@ -96,6 +96,21 @@ describe('useProjectDiscovery', () => {
     expect(progress).toHaveBeenCalledWith({ found: ['/work/app'] });
   });
 
+  it('ignores progress from listings that resolve after the scan settled', async () => {
+    const view = await discovery();
+    let lateListing: ((path: string) => Promise<unknown>) | undefined;
+    view.scanForProjects.mockImplementationOnce(async (scanOptions: any) => {
+      lateListing = scanOptions.listDirectory;
+      return { candidates: [], truncated: false, skippedForPermission: 0, failedReads: 0 };
+    });
+    const progress = vi.fn();
+
+    await view.value.scan('c1', '/work', { onProgress: progress });
+    await lateListing!('/work/app');
+
+    expect(progress).not.toHaveBeenCalled();
+  });
+
   it('refreshes the project catalog for every runtime of the connection', async () => {
     const view = await discovery();
     await view.value.refreshProjects('c1');

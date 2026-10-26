@@ -10,6 +10,19 @@ function find(root: any, testID: string): Element | undefined {
   return find(root.props?.children, testID);
 }
 
+function ancestors(root: any, testID: string, trail: any[] = []): any[] | undefined {
+  if (Array.isArray(root)) {
+    for (const child of root) {
+      const found = ancestors(child, testID, trail);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (!root || typeof root !== 'object') return undefined;
+  if (root.props?.testID === testID || root.type === testID) return trail;
+  return ancestors(root.props?.children, testID, [...trail, root]);
+}
+
 function parentDirectory(path: string): string {
   const trimmed = path.trim().replace(/\/+$/, '');
   const index = trimmed.lastIndexOf('/');
@@ -88,6 +101,7 @@ async function picker(options: PickerOptions = {}) {
       ScrollView: 'ScrollView',
       StyleSheet: { create: (styles: unknown) => styles },
       Text: 'NativeText',
+      useWindowDimensions: () => ({ width: 390, height: 844 }),
       View: 'View',
     },
     'react-native-paper': { Button: 'Button', Checkbox: 'Checkbox', Text: 'Text' },
@@ -102,6 +116,7 @@ async function picker(options: PickerOptions = {}) {
     './overlay-sheet': { OverlaySheet: 'OverlaySheet' },
     './text-input': { TextInput: 'Input' },
     '@/lib/project-discovery': { normalizeScanPath: (value: string) => value.trim().replace(/\/+$/, '') },
+    '@/providers/projects-storage': { PROJECTS_MAX: 50 },
   }, { Error });
 
   const onClose = vi.fn();
@@ -210,11 +225,26 @@ describe('project picker discovery', () => {
     });
     await view.openDiscover();
     await view.press('project-discover-start');
+    // The sheet itself stops scrolling in the results state so the warnings and
+    // the add row stay pinned; only the inner list scrolls.
+    expect(view.element('project-picker').props.scrollable).toBe(false);
     const list = view.element('project-discover-results');
     expect(list.type).toBe('ScrollView');
-    expect(list.props.style).toMatchObject({ maxHeight: expect.any(Number) });
+    const style = Object.assign({}, ...(Array.isArray(list.props.style) ? list.props.style : [list.props.style]));
+    expect(style).toMatchObject({ flex: 1, minHeight: 0, maxHeight: expect.any(Number) });
+    expect(style.maxHeight).toBeLessThanOrEqual(320);
+    expect(style.maxHeight).toBeLessThanOrEqual(844 * 0.35);
     expect(find(list, 'project-discover-add')).toBeUndefined();
     expect(find(view.runtime.value, 'project-discover-add')).toBeTruthy();
+    // No ScrollView ancestor at all: scrolling the outer sheet could not reveal
+    // the fixed rows.
+    expect(ancestors(view.runtime.value, 'project-discover-add')?.some((node) => node.type === 'ScrollView')).toBe(false);
+  });
+
+  it('keeps the sheet scrollable outside the results state', async () => {
+    const view = await picker({ focusPath: '/home/u/work/app' });
+    await view.openDiscover();
+    expect(view.element('project-picker').props.scrollable).toBe(true);
   });
 
   it('shows the live count and stops the scan when cancelled', async () => {
@@ -222,10 +252,10 @@ describe('project picker discovery', () => {
     const view = await picker({
       focusPath: '/home/u/work/app',
       scanImpl: async (_connectionId: string, _root: string, scanOptions: any) => {
-        scanOptions.onProgress({ found: ['/home/u/work/app'] });
+        scanOptions.onProgress({ found: ['/home/u/work/b', '/home/u/work/a'] });
         await gate.promise;
         return {
-          candidates: [{ path: '/home/u/work/app', exists: false }],
+          candidates: [{ path: '/home/u/work/a', exists: false }, { path: '/home/u/work/b', exists: false }],
           truncated: false,
           skippedForPermission: 0,
           failedReads: 0,
@@ -236,12 +266,16 @@ describe('project picker discovery', () => {
     await view.openDiscover();
     view.element('project-discover-start').props.onPress();
     await view.runtime.settle();
-    expect(view.element('project-discover-progress').props.children).toContain('project:discoverScanning:1');
+    expect(view.element('project-discover-progress').props.children).toContain('project:discoverScanning:2');
     const scanOptions = view.scan.mock.calls[0][2];
     await view.press('project-discover-cancel');
     expect(scanOptions.signal.cancelled).toBe(true);
-    // Already discovered candidates stay visible after cancelling, but nothing
-    // is preselected.
+    // Already discovered candidates stay visible after cancelling in the same
+    // order a completed scan would use, and the UI says the result is partial.
+    expect(view.element('project-discover-path-0').props.children).toBe('/home/u/work/a');
+    expect(view.element('project-discover-path-1').props.children).toBe('/home/u/work/b');
+    expect(view.element('project-discover-cancelled').props.children).toBe('project:discoverCancelled');
+    expect(view.element('project-discover-truncated').props.children).toBe('project:discoverTruncated');
     expect(view.element('project-discover-item-0').props.disabled).toBe(false);
     expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
     expect(view.element('project-discover-add').props.disabled).toBe(true);
@@ -414,7 +448,7 @@ describe('project picker discovery', () => {
     });
     await view.openDiscover();
     await view.press('project-discover-start');
-    expect(view.element('project-discover-scan-error').props.children).toBe('project:discoverV1Scope');
+    expect(view.element('project-discover-scan-error').props.children).toBe('project:discoverV1Hint');
   });
 
   it('clears results and refills the root when the server changes', async () => {
@@ -494,6 +528,148 @@ describe('project picker discovery', () => {
     view.runtime.update({ visible: false });
     expect(scanOptions.signal.cancelled).toBe(true);
     gate.resolve?.(undefined);
+  });
+
+  it('shows the permission message for an EACCES root failure', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanImpl: async () => { throw Object.assign(new Error('denied'), { code: 'scan_directory_unreadable', errno: 'EACCES' }); },
+    });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    expect(view.element('project-discover-scan-error').props.children).toBe('project:discoverRootPermission');
+  });
+
+  it('falls back to a localized message for an unexpected scan failure', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanImpl: async () => { throw new Error('socket exploded'); },
+    });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    expect(view.element('project-discover-scan-error').props.children).toBe('project:discoverScanFailed');
+  });
+
+  it('blocks adding when the visible results belong to another connection', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanResult: {
+        candidates: [{ path: '/home/u/work/a', exists: false }],
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    // The connection changes without going through the picker's own selector.
+    view.groups[0].id = 'c2';
+    view.runtime.update({ visible: true });
+
+    expect(view.element('project-discover-stale').props.children).toBe('project:discoverStale');
+    expect(view.element('project-discover-add').props.disabled).toBe(true);
+    view.element('project-discover-add').props.onPress();
+    await view.runtime.settle();
+    expect(view.add).not.toHaveBeenCalled();
+  });
+
+  it('ignores server and root changes while a batch is being added', async () => {
+    const first = deferredGate<{ connectionId: string; projectPath: string }>();
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      focusConnectionId: 'c1',
+      servers: [{ id: 'c1', name: 'One' }, { id: 'c2', name: 'Two' }],
+      defaultRoots: { c1: '/home/u/work', c2: '/srv/two' },
+      scanResult: {
+        candidates: [
+          { path: '/home/u/work/a', exists: false },
+          { path: '/home/u/work/b', exists: false },
+        ],
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    view.add.mockImplementationOnce(() => first.promise);
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    await view.press('project-discover-item-1');
+    view.element('project-discover-add').props.onPress();
+    await view.runtime.settle();
+
+    // A second batch must not start while the first one is still running.
+    view.element('project-discover-add').props.onPress();
+    // Neither the server nor the root may change under the running batch.
+    view.element('project-discover-server').props.onChange('c2');
+    view.element('project-discover-root').props.onChangeText('/srv/two');
+    await view.runtime.settle();
+
+    expect(view.element('project-discover-server').props.disabled).toBe(true);
+    expect(view.element('project-discover-root').props.editable).toBe(false);
+    expect(view.element('project-discover-root').props.value).toBe('/home/u/work');
+    expect(view.add).toHaveBeenCalledTimes(1);
+
+    first.resolve?.({ connectionId: 'c1', projectPath: '/home/u/work/a' });
+    await view.runtime.settle();
+    expect(view.add.mock.calls).toEqual([['c1', '/home/u/work/a'], ['c1', '/home/u/work/b']]);
+    expect(view.refreshProjects).toHaveBeenCalledWith('c1');
+  });
+
+  it('stops the batch when the connection changes underneath it', async () => {
+    const first = deferredGate<{ connectionId: string; projectPath: string }>();
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanResult: {
+        candidates: [
+          { path: '/home/u/work/a', exists: false },
+          { path: '/home/u/work/b', exists: false },
+        ],
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    view.add.mockImplementationOnce(() => first.promise);
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    await view.press('project-discover-item-1');
+    view.element('project-discover-add').props.onPress();
+    await view.runtime.settle();
+
+    view.groups[0].id = 'c2';
+    view.runtime.update({ visible: true });
+    first.resolve?.({ connectionId: 'c1', projectPath: '/home/u/work/a' });
+    await view.runtime.settle();
+
+    expect(view.add).toHaveBeenCalledTimes(1);
+    expect(view.activate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a batch that would exceed the project cap', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      projects: Array.from({ length: 49 }, (_, index) => `/home/u/work/existing-${index}`),
+      scanResult: {
+        candidates: [
+          { path: '/home/u/work/a', exists: false },
+          { path: '/home/u/work/b', exists: false },
+        ],
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    await view.press('project-discover-item-1');
+    await view.press('project-discover-add');
+
+    expect(view.add).not.toHaveBeenCalled();
+    expect(view.element('project-discover-error-0').props.children).toBe('project:discoverProjectLimit:1');
   });
 
   it('refuses to add more than the batch limit at once', async () => {

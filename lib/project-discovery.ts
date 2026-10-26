@@ -96,29 +96,53 @@ function recordOf(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
 }
 
-function errorStatus(error: unknown): number | undefined {
-  const record = recordOf(error);
-  const status = record?.status ?? recordOf(record?.response)?.status;
-  return typeof status === 'number' ? status : undefined;
+/**
+ * Flattens an error and its `cause` chain. SDK wrappers (notably the V1
+ * compatibility layer with `throwOnError`) move the HTTP status and the body
+ * under `cause`, so every classifier below has to walk the chain instead of
+ * reading only the outermost object. Matches `describeError` in
+ * `lib/opencode/client/errors.ts`.
+ */
+function errorChain(error: unknown): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [];
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const record = recordOf(current);
+    if (!record) break;
+    records.push(record);
+    current = record.cause;
+  }
+  return records;
 }
 
-function errorCode(error: unknown): string | undefined {
-  const record = recordOf(error);
-  for (const source of [record, recordOf(record?.cause)]) {
+/** HTTP status from an error or any wrapper in its `cause` chain. */
+export function scanErrorStatus(error: unknown): number | undefined {
+  for (const record of errorChain(error)) {
+    const status = record.status ?? recordOf(record.response)?.status;
+    if (typeof status === 'number') return status;
+  }
+  return undefined;
+}
+
+/** `errno`/`code` from an error or any wrapper in its `cause` chain. */
+export function scanErrorCode(error: unknown): string | undefined {
+  for (const record of errorChain(error)) {
     // `errno` carries the transport's EACCES even when the wrapper's `code` is
     // a scan-specific label, so it wins when both are present.
-    const errno = source?.errno;
+    const errno = record.errno;
     if (typeof errno === 'string') return errno;
-    const code = source?.code;
+    const code = record.code;
     if (typeof code === 'string') return code;
   }
   return undefined;
 }
 
 /** Only explicit authorization failures count as "skipped for permission". */
-function isPermissionError(error: unknown): boolean {
-  const status = errorStatus(error);
-  return status === 401 || status === 403 || errorCode(error) === 'EACCES';
+export function isScanPermissionError(error: unknown): boolean {
+  const status = scanErrorStatus(error);
+  return status === 401 || status === 403 || scanErrorCode(error) === 'EACCES';
 }
 
 /** The server may echo separators or dot entries; never trust them as names. */
@@ -174,9 +198,9 @@ export async function scanForProjects(options: {
   const stop = (next: NonNullable<ScanResult['reason']>) => {
     if (reason !== undefined) return;
     reason = next;
-    // A partial failure already marks the result incomplete; cancelling later
-    // must not erase that signal.
-    if (next !== 'cancelled') truncated = true;
+    // Any stop reason means work was abandoned: a partial failure, a cap, or a
+    // user cancellation all leave the result incomplete.
+    truncated = true;
   };
 
   // Waits for the next listing, but never longer than the remaining duration.
@@ -207,6 +231,9 @@ export async function scanForProjects(options: {
       stop('cancelled');
       break;
     }
+    // Nothing left to dispatch or await: finish before the deadline check so a
+    // scan that completed exactly at the limit is not reported as truncated.
+    if (queue.length === 0 && active.size === 0) break;
     if (clock() - startedAt >= maxDurationMs) {
       stop('max-duration');
       break;
@@ -222,8 +249,6 @@ export async function scanForProjects(options: {
       active.set(item.path, pending);
     }
 
-    if (active.size === 0) break;
-
     const waited = await waitForOutcome();
     if (waited.stop) {
       stop(waited.stop);
@@ -236,7 +261,7 @@ export async function scanForProjects(options: {
     if (!outcome.ok) {
       // Only the root surfaces its failure to the caller.
       if (outcome.item.depth === 0) throw outcome.error;
-      if (isPermissionError(outcome.error)) {
+      if (isScanPermissionError(outcome.error)) {
         skippedForPermission += 1;
       } else {
         failedReads += 1;
@@ -268,28 +293,35 @@ export async function scanForProjects(options: {
 
     if (hasMarker) found.push(outcome.item.path);
 
-    if (entries >= maxEntries) {
-      // Reaching the cap exactly on the last entry is a complete result; only
-      // pending work (unread entries, queued directories, or in-flight reads)
-      // makes it truncated.
-      if (unreadEntries || queue.length > 0 || active.size > 0) stop('max-entries');
-      break;
-    }
-
     // A matched project is a leaf for discovery purposes: no descendants. The
     // root is the exception — the user picked it as the scan scope, so a marker
     // there must not hide every project beneath it.
+    const nextDepth = outcome.item.depth + 1;
+    const children: string[] = [];
     if (!hasMarker || outcome.item.depth === 0) {
       for (const name of subdirectories) {
         const childPath = joinPath(outcome.item.path, name);
         if (seen.has(childPath)) continue;
         seen.add(childPath);
-        if (outcome.item.depth + 1 > SCAN_DEPTH_LIMIT) {
+        if (nextDepth > SCAN_DEPTH_LIMIT) {
           truncated = true;
           continue;
         }
-        queue.push({ path: childPath, depth: outcome.item.depth + 1 });
+        children.push(childPath);
       }
+    }
+
+    if (entries >= maxEntries) {
+      // Reaching the cap exactly on the last entry is only a complete result
+      // when nothing is left to read, queue, or dispatch. Subdirectories this
+      // listing collected but the cap prevented queueing still count as pending
+      // work: they were seen but never scanned.
+      if (unreadEntries || children.length > 0 || queue.length > 0 || active.size > 0) stop('max-entries');
+      break;
+    }
+
+    for (const childPath of children) {
+      queue.push({ path: childPath, depth: nextDepth });
     }
   }
 

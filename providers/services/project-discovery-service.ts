@@ -1,5 +1,5 @@
 import type { ScopedOpencodeClient } from '@/lib/opencode/client';
-import { normalizeScanPath } from '@/lib/project-discovery';
+import { normalizeScanPath, scanErrorCode, scanErrorStatus } from '@/lib/project-discovery';
 
 // Provider-facing adapter for the project discovery scanner: it turns the
 // per-directory `file.list` call into a `{ name, type }` listing so the
@@ -34,27 +34,6 @@ export class ScanError extends Error {
   }
 }
 
-function recordOf(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
-}
-
-function errorStatus(error: unknown): number | undefined {
-  const record = recordOf(error);
-  const status = record?.status ?? recordOf(record?.response)?.status;
-  return typeof status === 'number' ? status : undefined;
-}
-
-function errorCode(error: unknown): string | undefined {
-  const record = recordOf(error);
-  for (const source of [record, recordOf(record?.cause)]) {
-    const errno = source?.errno;
-    if (typeof errno === 'string') return errno;
-    const code = source?.code;
-    if (typeof code === 'string') return code;
-  }
-  return undefined;
-}
-
 function isInsideScope(directory: string, scope: string): boolean {
   return directory === scope || scope === '/' || directory.startsWith(`${scope}/`);
 }
@@ -69,8 +48,8 @@ async function readDirectory<Entry>(directory: string, run: () => Promise<{ data
   try {
     response = await run();
   } catch (error) {
-    const status = errorStatus(error);
-    const errno = errorCode(error);
+    const status = scanErrorStatus(error);
+    const errno = scanErrorCode(error);
     throw new ScanError(
       'scan_directory_unreadable',
       status === undefined ? `Could not read directory: ${directory}` : `Could not read directory: ${directory} (HTTP ${status})`,
