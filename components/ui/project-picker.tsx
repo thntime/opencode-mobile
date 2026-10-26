@@ -7,20 +7,17 @@ import { Button, Checkbox, Text } from 'react-native-paper';
 import { WorktreePicker } from '@/components/project/worktree-picker';
 import { WorkspaceSelect } from '@/components/ui/workspace-select';
 import { useWorkspaces } from '@/providers/workspace-context';
+import { useProjectDiscovery } from '@/providers/use-project-discovery';
 import { useWorkspaceProjects } from '@/providers/use-workspace-projects';
 import { ProjectOptions } from '@/components/onboarding/project-options';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { buildClient } from '@/lib/opencode/client';
-import { scanForProjects, type ScanCandidate } from '@/lib/project-discovery';
-import {
-  buildScanListDirectory,
-  normalizeScanPath,
-  resolveScanRoot,
-} from '@/providers/services/project-discovery-service';
+import { normalizeScanPath, type ScanCandidate } from '@/lib/project-discovery';
 import type { WorkspaceTarget } from '@/providers/workspace-types';
 import { OverlaySheet } from './overlay-sheet';
 import { TextInput } from './text-input';
+
+const MAX_BATCH_ADD = 10;
 
 export function ProjectPickerButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
@@ -29,15 +26,6 @@ export function ProjectPickerButton({ onPress }: { onPress: () => void }) {
     <MaterialCommunityIcons name="folder-swap-outline" size={20} color={palette.tint} />
     <NativeText style={{ color: palette.tint }}>{t('common:tabs.projects')}</NativeText>
   </Pressable>;
-}
-
-/** Parent of a remote POSIX path; empty for a path that has no parent. */
-function parentDirectory(path: string): string {
-  const trimmed = path.trim().replace(/\/+$/, '');
-  if (!trimmed) return '';
-  const index = trimmed.lastIndexOf('/');
-  if (index < 0) return '';
-  return index === 0 ? '/' : trimmed.slice(0, index);
 }
 
 export function ProjectPicker({ visible, onClose, activePath, onSelected, testID }: {
@@ -51,6 +39,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   const palette = Colors[useColorScheme() ?? 'light'];
   const registry = useWorkspaces();
   const { groups, add, remove } = useWorkspaceProjects();
+  const { scan, resolveDefaultRoot, isV1, refreshProjects } = useProjectDiscovery();
   const multipleServers = registry.connections.length > 1;
   const [server, setServer] = useState('');
   const [query, setQuery] = useState('');
@@ -69,9 +58,14 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [skipped, setSkipped] = useState(0);
+  const [failedReads, setFailedReads] = useState(0);
   const [scanError, setScanError] = useState<string>();
-  const [addError, setAddError] = useState<string>();
+  const [addErrors, setAddErrors] = useState<{ path: string; message: string }[]>([]);
   const [addingSelected, setAddingSelected] = useState(false);
+  // The connection the visible results came from. Adding is blocked when the
+  // user switches servers without rescanning, so stale paths cannot land on the
+  // wrong host.
+  const [scannedConnectionId, setScannedConnectionId] = useState<string>();
   const scanSignal = useRef<{ cancelled: boolean } | undefined>(undefined);
   // Progress mirror: the scanner reports results only when it settles, so the
   // live counter and the cancelled view are fed from each listing instead.
@@ -79,41 +73,49 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   const scanExisting = useRef<Set<string>>(new Set());
 
   const connectionId = multipleServers ? addServer : groups[0]?.id ?? '';
-  const activeProjectFor = (id: string) => {
-    if (!id) return '';
-    const focus = registry.focus;
-    if (focus?.connectionId === id && focus.projectPath) return focus.projectPath;
-    if (!multipleServers && activePath) return activePath;
-    const snapshot = Object.entries(registry.snapshots).find(([key]) => (JSON.parse(key) as string[])[0] === id)?.[1];
-    return snapshot?.values.projectsValue.activeProjectPath
-      || registry.connections.find((entry) => entry.id === id)?.settings.directory
-      || '';
-  };
-  const contractFor = (id: string) => Object.entries(registry.snapshots)
-    .find(([key]) => (JSON.parse(key) as string[])[0] === id)?.[1].values.connectionValue.serverCapabilities.contract ?? 'v2';
-  const projectsFor = (id: string) => groups.find((group) => group.id === id)?.projects.map((project) => project.path) ?? [];
+  // `activePath` describes the focused server only; a different server must use
+  // its own snapshot/settings instead.
+  const fallbackPath = multipleServers ? undefined : activePath;
+  const v1Connection = isV1(connectionId);
+  const resultsStale = scanned && scannedConnectionId !== connectionId;
 
-  const resetDiscover = () => {
-    setScanRoot('');
-    setScanning(false);
+  const clearScanResults = () => {
     setScanned(false);
     setScanCount(0);
     setCandidates([]);
     setSelectedPaths([]);
     setTruncated(false);
     setSkipped(0);
+    setFailedReads(0);
     setScanError(undefined);
-    setAddError(undefined);
+    setAddErrors([]);
     setAddingSelected(false);
-    scanSignal.current = undefined;
+    setScannedConnectionId(undefined);
     scanFound.current = [];
     scanExisting.current = new Set();
   };
+  const cancelActiveScan = () => {
+    if (scanSignal.current) scanSignal.current.cancelled = true;
+    scanSignal.current = undefined;
+  };
+  const resetDiscover = () => {
+    cancelActiveScan();
+    setScanRoot('');
+    setScanning(false);
+    clearScanResults();
+  };
   // D6: a closed or unmounted picker must not keep dispatching directory reads.
   useEffect(() => () => { if (scanSignal.current) scanSignal.current.cancelled = true; }, []);
+  useEffect(() => {
+    if (visible) return;
+    // Closing the sheet without going through `close` still has to stop the
+    // scan. The scanner polls cancellation, so its own `finally` clears the
+    // scanning state without a synchronous setState here.
+    if (scanSignal.current) scanSignal.current.cancelled = true;
+  }, [visible]);
 
   const close = () => {
-    if (scanSignal.current) scanSignal.current.cancelled = true;
+    cancelActiveScan();
     setAdding(false);
     setDiscovering(false);
     setDirectory('');
@@ -128,36 +130,68 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   };
   const openDiscover = () => {
     resetDiscover();
-    setScanRoot(parentDirectory(activeProjectFor(connectionId)));
+    setScanRoot(resolveDefaultRoot(connectionId, fallbackPath));
     setDiscovering(true);
   };
   const backToAdd = () => {
-    if (scanSignal.current) scanSignal.current.cancelled = true;
     resetDiscover();
     setDiscovering(false);
+  };
+  // I2: switching servers invalidates everything the previous server produced.
+  const changeServer = (id: string) => {
+    cancelActiveScan();
+    setAddServer(id);
+    resetDiscover();
+    setScanRoot(resolveDefaultRoot(id, fallbackPath));
+  };
+  const changeRoot = (value: string) => {
+    // Editing the root while results are visible invalidates them: the list no
+    // longer describes what the input points at.
+    if (scanning) {
+      cancelActiveScan();
+      setScanning(false);
+    }
+    if (scanned || scanError || candidates.length > 0) clearScanResults();
+    setScanRoot(value);
+  };
+  const scanErrorMessage = (reason: unknown) => {
+    const record = reason && typeof reason === 'object' ? reason as { code?: unknown; status?: unknown } : undefined;
+    switch (record?.code) {
+      case 'scan_scope_v1': return t('project:discoverV1Scope');
+      case 'scan_unsupported': return t('project:discoverUnsupported');
+      case 'scan_root_required':
+      case 'scan_root_relative': return t('project:discoverRootInvalid');
+      case 'scan_connection_missing': return t('project:errors.addProject');
+      case 'scan_directory_unreadable':
+        return record.status === 401 || record.status === 403
+          ? t('project:discoverRootPermission')
+          : t('project:discoverRootUnavailable');
+      default: return reason instanceof Error ? reason.message : t('project:errors.addProject');
+    }
   };
   const cancelScan = () => {
     const signal = scanSignal.current;
     if (!signal) return;
     signal.cancelled = true;
+    scanSignal.current = undefined;
     // Keep what was already discovered visible instead of flashing an empty list.
     const found = scanFound.current;
     setCandidates(found.map((path) => ({ path, exists: scanExisting.current.has(path) })));
     setSelectedPaths(found.filter((path) => !scanExisting.current.has(path)));
     setScanned(true);
+    setScannedConnectionId(connectionId);
     setScanning(false);
   };
   const startScan = () => {
     const root = scanRoot.trim();
     if (!root || scanning) return;
     const id = connectionId;
-    const entry = registry.connections.find((item) => item.id === id);
-    if (!entry) {
+    if (!registry.connections.some((item) => item.id === id)) {
       setScanError(t('project:errors.addProject'));
       return;
     }
     const signal = { cancelled: false };
-    const existingPaths = projectsFor(id);
+    const existingPaths = groups.find((group) => group.id === id)?.projects.map((project) => project.path) ?? [];
     scanSignal.current = signal;
     scanFound.current = [];
     scanExisting.current = new Set(existingPaths.map(normalizeScanPath));
@@ -168,23 +202,19 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
     setSelectedPaths([]);
     setTruncated(false);
     setSkipped(0);
+    setFailedReads(0);
     setScanError(undefined);
-    setAddError(undefined);
+    setAddErrors([]);
+    setScannedConnectionId(id);
     void (async () => {
       try {
-        const client = buildClient({ ...entry.settings, directory: activeProjectFor(id) || root }, contractFor(id));
-        const listDirectory = buildScanListDirectory(client);
-        const result = await scanForProjects({
-          root: resolveScanRoot(client, root),
-          existingPaths,
+        const result = await scan(id, root, {
           signal,
-          listDirectory: async (path) => {
-            const entries = await listDirectory(path);
-            if (!signal.cancelled && entries.some((item) => item.type === 'directory' && item.name === '.opencode')) {
-              scanFound.current.push(path);
-              setScanCount(scanFound.current.length);
-            }
-            return entries;
+          fallbackPath,
+          onProgress: ({ found }) => {
+            if (signal.cancelled) return;
+            scanFound.current = found;
+            setScanCount(found.length);
           },
         });
         // A cancelled scan was already rendered from the progress mirror.
@@ -193,10 +223,12 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
           setSelectedPaths(result.candidates.filter((candidate) => !candidate.exists).map((candidate) => candidate.path));
           setTruncated(result.truncated);
           setSkipped(result.skippedForPermission);
+          setFailedReads(result.failedReads);
           setScanned(true);
+          setScannedConnectionId(id);
         }
       } catch (reason) {
-        if (!signal.cancelled) setScanError(reason instanceof Error ? reason.message : t('project:errors.addProject'));
+        if (!signal.cancelled) setScanError(scanErrorMessage(reason));
       } finally {
         if (scanSignal.current === signal) {
           scanSignal.current = undefined;
@@ -212,17 +244,23 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   };
   const addSelected = () => {
     if (addingSelected) return;
+    // Never add results produced for a different server.
+    if (scannedConnectionId !== connectionId) return;
     const id = connectionId;
     const paths = candidates
       .filter((candidate) => !candidate.exists && selectedPaths.includes(candidate.path))
       .map((candidate) => candidate.path);
     if (!paths.length) return;
+    if (paths.length > MAX_BATCH_ADD) {
+      setAddErrors([{ path: '', message: t('project:discoverAddLimit', { count: MAX_BATCH_ADD }) }]);
+      return;
+    }
     setAddingSelected(true);
-    setAddError(undefined);
+    setAddErrors([]);
     void (async () => {
       const addedTargets: WorkspaceTarget[] = [];
       const addedPaths: string[] = [];
-      let failure: string | undefined;
+      const failures: { path: string; message: string }[] = [];
       // Serial writes keep the workspace registry consistent and let a partial
       // failure keep the projects that already succeeded.
       for (const path of paths) {
@@ -230,7 +268,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
           addedTargets.push(await add(id, path));
           addedPaths.push(path);
         } catch (reason) {
-          failure ??= reason instanceof Error ? reason.message : String(reason);
+          failures.push({ path, message: reason instanceof Error ? reason.message : String(reason) });
         }
       }
       setAddingSelected(false);
@@ -239,12 +277,16 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
         setCandidates((current) => current.map((candidate) => done.has(candidate.path) ? { ...candidate, exists: true } : candidate));
         setSelectedPaths((current) => current.filter((path) => !done.has(path)));
       }
-      if (failure) {
-        setAddError(t('project:discoverFailed', { message: failure }));
+      if (failures.length) {
+        // Every failure keeps its own path and stays selected for a retry.
+        setAddErrors(failures);
         return;
       }
       if (addedTargets.length === 1) {
-        await activate(addedTargets[0]).catch((reason) => setAddError(reason instanceof Error ? reason.message : String(reason)));
+        await activate(addedTargets[0]).catch((reason) => setAddErrors([{
+          path: addedTargets[0].projectPath,
+          message: reason instanceof Error ? reason.message : String(reason),
+        }]));
         return;
       }
       // Several projects: return to the list and let the user pick which one to open.
@@ -252,8 +294,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
         setAdding(false);
         setDiscovering(false);
         resetDiscover();
-        const snapshot = Object.entries(registry.snapshots).find(([key]) => (JSON.parse(key) as string[])[0] === id)?.[1];
-        if (snapshot) void snapshot.values.projectsValue.refreshProjectCatalog(true).catch(() => undefined);
+        await refreshProjects(id);
       }
     })();
   };
@@ -261,8 +302,9 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   return <OverlaySheet visible={visible} title={t('project:picker.title')} testID={testID} onClose={close}>
     {adding ? (discovering ? <View style={styles.addForm}>
       <Text style={{ color: palette.muted }}>{t('project:picker.enterPath')}</Text>
-      {multipleServers ? <WorkspaceSelect title={t('common:servers.server')} value={addServer} options={groups.map((group) => ({ value: group.id, label: group.name }))} onChange={setAddServer} /> : null}
-      <TextInput testID="project-discover-root" mode="outlined" label={t('project:discoverRoot')} value={scanRoot} onChangeText={setScanRoot} autoCapitalize="none" autoCorrect={false} autoFocus={!scanRoot} />
+      {multipleServers ? <WorkspaceSelect testID="project-discover-server" title={t('common:servers.server')} value={addServer} options={groups.map((group) => ({ value: group.id, label: group.name }))} onChange={changeServer} /> : null}
+      <TextInput testID="project-discover-root" mode="outlined" label={t('project:discoverRoot')} value={scanRoot} onChangeText={changeRoot} autoCapitalize="none" autoCorrect={false} autoFocus={!scanRoot} />
+      {v1Connection ? <Text testID="project-discover-v1-hint" style={{ color: palette.muted }}>{t('project:discoverV1Hint')}</Text> : null}
       {scanError ? <Text testID="project-discover-scan-error" style={{ color: palette.danger }}>{scanError}</Text> : null}
       {scanning ? <>
         <Text testID="project-discover-progress">{t('project:discoverScanning', { count: scanCount })}</Text>
@@ -282,19 +324,32 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
               </View>
             </Pressable>;
           })}
-          {candidates.every((candidate) => candidate.exists) ? <Text testID="project-discover-empty">{t('project:discoverEmpty')}</Text> : null}
+          {candidates.length === 0 ? <Text testID="project-discover-empty">{t('project:discoverEmpty')}</Text> : null}
+          {candidates.length > 0 && candidates.every((candidate) => candidate.exists)
+            ? <Text testID="project-discover-all-existing">{t('project:discoverAllExisting', { count: candidates.length })}</Text> : null}
           {truncated ? <Text testID="project-discover-truncated" style={{ color: palette.warning }}>{t('project:discoverTruncated')}</Text> : null}
           {skipped > 0 ? <Text testID="project-discover-skipped" style={{ color: palette.warning }}>{t('project:discoverSkipped', { count: skipped })}</Text> : null}
-          {addError ? <Text testID="project-discover-error" style={{ color: palette.danger }}>{addError}</Text> : null}
+          {failedReads > 0 ? <Text testID="project-discover-failed-reads" style={{ color: palette.warning }}>{t('project:discoverFailedReads', { count: failedReads })}</Text> : null}
+          {resultsStale ? <Text testID="project-discover-stale" style={{ color: palette.warning }}>{t('project:discoverStale')}</Text> : null}
+          {addErrors.length ? <View testID="project-discover-error">
+            {addErrors.map((failure, index) => <Text key={`${failure.path}:${index}`} testID={`project-discover-error-${index}`} style={{ color: palette.danger }}>
+              {failure.path
+                ? t('project:discoverAddFailedPath', { path: failure.path, message: failure.message })
+                : failure.message}
+            </Text>)}
+          </View> : null}
           <View style={styles.formActions}>
             <Button onPress={backToAdd}>{t('common:actions.cancel')}</Button>
-            <Button testID="project-discover-add" mode="contained" loading={addingSelected} disabled={addingSelected || selectedPaths.length === 0} onPress={addSelected}>{t('project:discoverAddSelected', { count: selectedPaths.length })}</Button>
+            <Button testID="project-discover-add" mode="contained" loading={addingSelected}
+              disabled={addingSelected || resultsStale || selectedPaths.length === 0} onPress={addSelected}>
+              {t('project:discoverAddSelected', { count: selectedPaths.length })}
+            </Button>
           </View>
         </> : null}
       </>}
     </View> : <View style={styles.addForm}>
       <Text style={{ color: palette.muted }}>{t('project:picker.enterPath')}</Text>
-      {multipleServers ? <WorkspaceSelect title={t('common:servers.server')} value={addServer} options={groups.map((group) => ({ value: group.id, label: group.name }))} onChange={setAddServer} /> : null}
+      {multipleServers ? <WorkspaceSelect title={t('common:servers.server')} value={addServer} options={groups.map((group) => ({ value: group.id, label: group.name }))} onChange={changeServer} /> : null}
       <TextInput testID="project-add-path" mode="outlined" label={t('project:picker.serverDirectory')} value={directory} onChangeText={setDirectory} autoCapitalize="none" autoCorrect={false} />
       <Button testID="project-discover-open" icon="folder-search-outline" onPress={openDiscover}>{t('project:discover')}</Button>
       {error ? <Text style={{ color: palette.danger }}>{error}</Text> : null}
