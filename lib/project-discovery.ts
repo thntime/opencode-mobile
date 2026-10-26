@@ -276,8 +276,10 @@ export async function scanForProjects(options: {
       break;
     }
 
-    if (!hasMarker) {
-      // A matched project is a leaf for discovery purposes: no descendants.
+    // A matched project is a leaf for discovery purposes: no descendants. The
+    // root is the exception — the user picked it as the scan scope, so a marker
+    // there must not hide every project beneath it.
+    if (!hasMarker || outcome.item.depth === 0) {
       for (const name of subdirectories) {
         const childPath = joinPath(outcome.item.path, name);
         if (seen.has(childPath)) continue;

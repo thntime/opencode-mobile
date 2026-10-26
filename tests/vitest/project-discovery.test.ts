@@ -92,16 +92,18 @@ describe('scanForProjects', () => {
     expect(calls).toContain('/root/a/b');
   });
 
-  it('does not descend into a matched project', async () => {
+  it('descends past the root marker but stops at nested matches', async () => {
     const { listDirectory, calls } = fakeTree({
       '/root': dirs('.opencode', 'nested'),
-      '/root/nested': dirs('.opencode'),
+      '/root/nested': dirs('.opencode', 'deeper'),
+      '/root/nested/deeper': dirs('.opencode'),
     });
 
     const result = await scanForProjects({ root: '/root', listDirectory });
 
-    expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root']);
-    expect(calls).toEqual(['/root']);
+    expect(result.candidates.map((candidate) => candidate.path)).toEqual(['/root', '/root/nested']);
+    expect(calls).toContain('/root/nested');
+    expect(calls).not.toContain('/root/nested/deeper');
   });
 
   it('does not treat an .opencode file as a marker', async () => {
