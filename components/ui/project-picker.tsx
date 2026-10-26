@@ -38,7 +38,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
 }) {
   const { t } = useTranslation();
   const palette = Colors[useColorScheme() ?? 'light'];
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const registry = useWorkspaces();
   const { groups, add, remove } = useWorkspaceProjects();
   const { scan, resolveDefaultRoot, isV1, refreshProjects } = useProjectDiscovery();
@@ -86,7 +86,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   // A batch is identified by a token so a later batch (or a close) can
   // invalidate the loop before it touches the next path.
   const batchTokenRef = useRef(0);
-  const batchRef = useRef<{ token: number; connectionId: string } | null>(null);
+  const batchRef = useRef<{ token: number } | null>(null);
   const batchAbortRef = useRef(false);
   useEffect(() => { refreshProjectsRef.current = refreshProjects; }, [refreshProjects]);
 
@@ -97,9 +97,13 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   const fallbackPath = multipleServers ? undefined : activePath;
   const v1Connection = isV1(connectionId);
   const resultsStale = scanned && scannedConnectionId !== connectionId;
-  // In the results state the sheet itself must not scroll: the warning rows and
-  // the add action stay pinned while only the candidate list scrolls.
+  // Results pin the warnings and the add action while only the candidate list
+  // scrolls; a short or landscape window cannot fit that chrome, so it scrolls.
   const resultsVisible = adding && discovering && scanned && !scanning;
+  const compactViewport = windowHeight < 640 || windowWidth > windowHeight;
+  const resultsScrollable = resultsVisible && !compactViewport;
+  const resultListMaxHeight = Math.min(320, windowHeight * 0.35);
+  const addErrorsMaxHeight = Math.min(160, windowHeight * 0.2);
 
   const clearScanResults = () => {
     setScanned(false);
@@ -309,7 +313,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
     }
     const token = batchTokenRef.current + 1;
     batchTokenRef.current = token;
-    batchRef.current = { token, connectionId: id };
+    batchRef.current = { token };
     batchAbortRef.current = false;
     setAddingSelected(true);
     setAddErrors([]);
@@ -384,8 +388,8 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   };
 
   return <OverlaySheet visible={visible} title={t('project:picker.title')} testID={testID} onClose={close}
-    scrollable={!resultsVisible}>
-    {adding ? (discovering ? <View style={[styles.addForm, resultsVisible && styles.resultsForm]}>
+    scrollable={!resultsScrollable}>
+    {adding ? (discovering ? <View style={[styles.addForm, resultsScrollable && styles.resultsForm]}>
       <Text style={{ color: palette.muted }}>{t('project:picker.enterPath')}</Text>
       {multipleServers ? <WorkspaceSelect testID="project-discover-server" title={t('common:servers.server')} value={addServer} options={groups.map((group) => ({ value: group.id, label: group.name }))} onChange={changeServer} disabled={addingSelected} /> : null}
       <TextInput testID="project-discover-root" ref={setRootInputRef} mode="outlined" label={t('project:discoverRoot')} value={scanRoot} onChangeText={changeRoot} autoCapitalize="none" autoCorrect={false} autoFocus={!scanRoot} editable={!addingSelected} />
@@ -398,8 +402,10 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
         <Button testID="project-discover-start" mode="contained" disabled={!scanRoot.trim() || addingSelected} onPress={startScan}>{t('project:discoverStart')}</Button>
         {scanned ? <>
           {/* Only the candidate rows scroll; the warnings and the add action stay
-              pinned so a long result list cannot push them off-screen. */}
-          <ScrollView testID="project-discover-results" style={[styles.resultScroll, { maxHeight: Math.min(320, windowHeight * 0.35) }]}
+              pinned so a long result list cannot push them off-screen. In a
+              compact viewport the sheet scrolls instead, so the list keeps its
+              natural height and only caps at `maxHeight`. */}
+          <ScrollView testID="project-discover-results" style={[styles.resultScroll, !resultsScrollable && styles.resultScrollCompact, { maxHeight: resultListMaxHeight }]}
             contentContainerStyle={styles.resultList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {candidates.map((candidate, index) => {
               const selected = !candidate.exists && selectedPaths.includes(candidate.path);
@@ -418,17 +424,22 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
               ? <Text testID="project-discover-all-existing">{t('project:discoverAllExisting', { count: candidates.length })}</Text> : null}
           </ScrollView>
           {cancelledScan ? <Text testID="project-discover-cancelled" style={{ color: palette.warning }}>{t('project:discoverCancelled')}</Text> : null}
-          {truncated ? <Text testID="project-discover-truncated" style={{ color: palette.warning }}>{t('project:discoverTruncated')}</Text> : null}
+          {/* A cancelled scan also marks the result partial, but the cap banner
+              would misreport why: the cancel banner already explains it. */}
+          {truncated && !cancelledScan ? <Text testID="project-discover-truncated" style={{ color: palette.warning }}>{t('project:discoverTruncated')}</Text> : null}
           {skipped > 0 ? <Text testID="project-discover-skipped" style={{ color: palette.warning }}>{t('project:discoverSkipped', { count: skipped })}</Text> : null}
           {failedReads > 0 ? <Text testID="project-discover-failed-reads" style={{ color: palette.warning }}>{t('project:discoverFailedReads', { count: failedReads })}</Text> : null}
           {resultsStale ? <Text testID="project-discover-stale" style={{ color: palette.warning }}>{t('project:discoverStale')}</Text> : null}
-          {addErrors.length ? <View testID="project-discover-error">
+          {/* Batch failures can be long (path + message per row): they scroll in
+              their own bounded area so the action row below stays visible. */}
+          {addErrors.length ? <ScrollView testID="project-discover-error" style={{ maxHeight: addErrorsMaxHeight }}
+            nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {addErrors.map((failure, index) => <Text key={`${failure.path}:${index}`} testID={`project-discover-error-${index}`} style={{ color: palette.danger }}>
               {failure.path
                 ? t('project:discoverAddFailedPath', { path: failure.path, message: failure.message })
                 : failure.message}
             </Text>)}
-          </View> : null}
+          </ScrollView> : null}
           <View style={styles.formActions}>
             <Button onPress={backToAdd} disabled={addingSelected}>{t('common:actions.cancel')}</Button>
             <Button testID="project-discover-add" mode="contained" loading={addingSelected}
@@ -479,6 +490,9 @@ const styles = StyleSheet.create({
   resultsForm: { flex: 1, minHeight: 0 },
   formActions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
   resultScroll: { flex: 1, minHeight: 0 },
+  // Inside the sheet's own ScrollView the list must keep its natural height,
+  // otherwise `flex: 1` collapses it against an unbounded content container.
+  resultScrollCompact: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
   resultList: { gap: 2 },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
 });

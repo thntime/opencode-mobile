@@ -52,6 +52,7 @@ type PickerOptions = {
   v1?: Record<string, boolean>;
   scanResult?: Record<string, unknown>;
   scanImpl?: (connectionId: string, root: string, options: any) => Promise<unknown>;
+  window?: { width: number; height: number };
 };
 
 async function picker(options: PickerOptions = {}) {
@@ -101,7 +102,7 @@ async function picker(options: PickerOptions = {}) {
       ScrollView: 'ScrollView',
       StyleSheet: { create: (styles: unknown) => styles },
       Text: 'NativeText',
-      useWindowDimensions: () => ({ width: 390, height: 844 }),
+      useWindowDimensions: () => options.window ?? { width: 390, height: 844 },
       View: 'View',
     },
     'react-native-paper': { Button: 'Button', Checkbox: 'Checkbox', Text: 'Text' },
@@ -247,6 +248,42 @@ describe('project picker discovery', () => {
     expect(view.element('project-picker').props.scrollable).toBe(true);
   });
 
+  it('falls back to a scrollable sheet when the window is short and failures stack up', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      window: { width: 390, height: 390 },
+      scanResult: {
+        candidates: Array.from({ length: 10 }, (_, index) => ({ path: `/home/u/work/p${index}`, exists: false })),
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    view.add.mockRejectedValue(new Error('boom'));
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    for (let index = 0; index < 10; index += 1) await view.press(`project-discover-item-${index}`);
+    await view.press('project-discover-add');
+
+    // A 390pt-tall window cannot keep the fixed chrome pinned, so the sheet
+    // itself scrolls instead of clipping the action row.
+    expect(view.element('project-picker').props.scrollable).toBe(true);
+    expect(view.element('project-discover-error-9')).toBeTruthy();
+    const errors = view.element('project-discover-error');
+    // The failure list has its own bounded scroll area and never swallows the
+    // action row.
+    expect(errors.type).toBe('ScrollView');
+    const errorStyle = Object.assign({}, ...(Array.isArray(errors.props.style) ? errors.props.style : [errors.props.style]));
+    expect(errorStyle.maxHeight).toBeGreaterThan(0);
+    expect(errorStyle.maxHeight).toBeLessThanOrEqual(390 * 0.2);
+    expect(find(errors, 'project-discover-add')).toBeUndefined();
+    expect(find(view.element('project-discover-results'), 'project-discover-add')).toBeUndefined();
+    // The action row stays in the document flow below the errors, outside every
+    // inner scroll area; `scrollable` above makes the sheet itself the scroller
+    // that can bring it into view.
+    expect(ancestors(view.runtime.value, 'project-discover-add')?.some((node) => node.type === 'ScrollView')).toBe(false);
+  });
+
   it('shows the live count and stops the scan when cancelled', async () => {
     const gate = deferredGate<undefined>();
     const view = await picker({
@@ -275,7 +312,9 @@ describe('project picker discovery', () => {
     expect(view.element('project-discover-path-0').props.children).toBe('/home/u/work/a');
     expect(view.element('project-discover-path-1').props.children).toBe('/home/u/work/b');
     expect(view.element('project-discover-cancelled').props.children).toBe('project:discoverCancelled');
-    expect(view.element('project-discover-truncated').props.children).toBe('project:discoverTruncated');
+    // Cancelling is not the scan cap: the cap banner would contradict the
+    // cancel banner and misreport why the list is partial.
+    expect(view.maybe('project-discover-truncated')).toBeUndefined();
     expect(view.element('project-discover-item-0').props.disabled).toBe(false);
     expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
     expect(view.element('project-discover-add').props.disabled).toBe(true);
@@ -646,6 +685,46 @@ describe('project picker discovery', () => {
 
     expect(view.add).toHaveBeenCalledTimes(1);
     expect(view.activate).not.toHaveBeenCalled();
+  });
+
+  it('aborts the batch and resets the add action when the sheet closes mid-batch', async () => {
+    const first = deferredGate<{ connectionId: string; projectPath: string }>();
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanResult: {
+        candidates: [
+          { path: '/home/u/work/a', exists: false },
+          { path: '/home/u/work/b', exists: false },
+        ],
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    view.add.mockImplementationOnce(() => first.promise);
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    await view.press('project-discover-item-1');
+    view.element('project-discover-add').props.onPress();
+    await view.runtime.settle();
+    expect(view.add).toHaveBeenCalledTimes(1);
+
+    // Closing the sheet must stop the batch before it touches the next path.
+    view.element('project-picker').props.onClose();
+    await view.runtime.settle();
+    first.resolve?.({ connectionId: 'c1', projectPath: '/home/u/work/a' });
+    await view.runtime.settle();
+    expect(view.add).toHaveBeenCalledTimes(1);
+    expect(view.activate).not.toHaveBeenCalled();
+    expect(view.onClose).toHaveBeenCalledOnce();
+
+    // The aborted batch must not leave the add action stuck in its loading state.
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    expect(view.element('project-discover-add').props.loading).toBe(false);
+    expect(view.element('project-discover-add').props.disabled).toBe(false);
   });
 
   it('refuses a batch that would exceed the project cap', async () => {
