@@ -64,6 +64,17 @@
     "removeLabel": "Remover {{name}}",
     "empty": "Nenhum projeto disponível."
   },
+  "discover": "Descobrir projetos",
+  "discoverRoot": "Diretório raiz da verificação",
+  "discoverStart": "Iniciar verificação",
+  "discoverScanning": "{{count}} projeto(s) encontrado(s) até agora",
+  "discoverCancel": "Cancelar verificação",
+  "discoverTruncated": "Limite de verificação atingido; os resultados podem estar incompletos.",
+  "discoverSkipped": "{{count}} diretório(s) ignorado(s) por falta de permissões.",
+  "discoverExisting": "Já adicionado",
+  "discoverAddSelected": "Adicionar selecionados ({{count}})",
+  "discoverEmpty": "Nenhum projeto encontrado.",
+  "discoverFailed": "Falha ao adicionar: {{message}}",
   "errors": {
     "refreshProject": "Não foi possível atualizar o projeto.",
     "searchFiles": "Não foi possível buscar os arquivos do projeto.",

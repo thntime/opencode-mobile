@@ -64,6 +64,17 @@
     "removeLabel": "{{name}} entfernen",
     "empty": "Keine Projekte verfügbar."
   },
+  "discover": "Projekte entdecken",
+  "discoverRoot": "Scan-Stammverzeichnis",
+  "discoverStart": "Scan starten",
+  "discoverScanning": "Bisher {{count}} Projekt(e) gefunden",
+  "discoverCancel": "Scan abbrechen",
+  "discoverTruncated": "Scan-Limit erreicht; die Ergebnisse sind möglicherweise unvollständig.",
+  "discoverSkipped": "{{count}} Verzeichnis(se) wegen fehlender Berechtigungen übersprungen.",
+  "discoverExisting": "Bereits hinzugefügt",
+  "discoverAddSelected": "Auswahl hinzufügen ({{count}})",
+  "discoverEmpty": "Keine Projekte gefunden.",
+  "discoverFailed": "Hinzufügen fehlgeschlagen: {{message}}",
   "errors": {
     "refreshProject": "Der Projekt konnte nicht aktualisiert werden.",
     "searchFiles": "Die Projektdateien konnten nicht durchsucht werden.",

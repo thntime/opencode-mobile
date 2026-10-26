@@ -64,6 +64,17 @@
     "removeLabel": "移除 {{name}}",
     "empty": "没有可用的项目。"
   },
+  "discover": "发现项目",
+  "discoverRoot": "扫描根目录",
+  "discoverStart": "开始扫描",
+  "discoverScanning": "已发现 {{count}} 个项目",
+  "discoverCancel": "取消扫描",
+  "discoverTruncated": "已达到扫描上限，结果可能不完整。",
+  "discoverSkipped": "有 {{count}} 个目录因权限被跳过。",
+  "discoverExisting": "已存在",
+  "discoverAddSelected": "添加所选（{{count}}）",
+  "discoverEmpty": "没有发现可添加的项目。",
+  "discoverFailed": "添加失败：{{message}}",
   "errors": {
     "refreshProject": "无法刷新项目。",
     "searchFiles": "无法搜索项目文件。",

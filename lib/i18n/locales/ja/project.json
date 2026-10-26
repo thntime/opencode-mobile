@@ -64,6 +64,17 @@
     "removeLabel": "{{name}}を削除",
     "empty": "利用可能なプロジェクトはありません。"
   },
+  "discover": "プロジェクトを検出",
+  "discoverRoot": "スキャンルート",
+  "discoverStart": "スキャン開始",
+  "discoverScanning": "これまでに {{count}} 件のプロジェクトを検出",
+  "discoverCancel": "スキャンをキャンセル",
+  "discoverTruncated": "スキャン上限に達しました。結果が不完全な可能性があります。",
+  "discoverSkipped": "権限のため {{count}} 件のディレクトリをスキップしました。",
+  "discoverExisting": "追加済み",
+  "discoverAddSelected": "選択項目を追加（{{count}}）",
+  "discoverEmpty": "追加できるプロジェクトが見つかりません。",
+  "discoverFailed": "追加に失敗しました: {{message}}",
   "errors": {
     "refreshProject": "プロジェクトを更新できませんでした。",
     "searchFiles": "プロジェクトのファイルを検索できませんでした。",

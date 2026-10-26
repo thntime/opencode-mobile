@@ -64,6 +64,17 @@
     "removeLabel": "Retirer {{name}}",
     "empty": "Aucun projet disponible."
   },
+  "discover": "Découvrir des projets",
+  "discoverRoot": "Répertoire racine de l'analyse",
+  "discoverStart": "Lancer l'analyse",
+  "discoverScanning": "{{count}} projet(s) trouvé(s) pour l'instant",
+  "discoverCancel": "Annuler l'analyse",
+  "discoverTruncated": "Limite d'analyse atteinte ; les résultats peuvent être incomplets.",
+  "discoverSkipped": "{{count}} répertoire(s) ignoré(s) pour des raisons d'autorisations.",
+  "discoverExisting": "Déjà ajouté",
+  "discoverAddSelected": "Ajouter la sélection ({{count}})",
+  "discoverEmpty": "Aucun projet trouvé.",
+  "discoverFailed": "Échec de l'ajout : {{message}}",
   "errors": {
     "refreshProject": "Impossible d'actualiser le projet.",
     "searchFiles": "Impossible de rechercher dans les fichiers de le projet.",

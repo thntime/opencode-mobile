@@ -64,6 +64,17 @@
     "removeLabel": "Remove {{name}}",
     "empty": "No projects available."
   },
+  "discover": "Discover projects",
+  "discoverRoot": "Scan root",
+  "discoverStart": "Start scan",
+  "discoverScanning": "{{count}} project(s) found so far",
+  "discoverCancel": "Cancel scan",
+  "discoverTruncated": "Scan limit reached; results may be incomplete.",
+  "discoverSkipped": "{{count}} director(ies) skipped due to permissions.",
+  "discoverExisting": "Already added",
+  "discoverAddSelected": "Add selected ({{count}})",
+  "discoverEmpty": "No projects found.",
+  "discoverFailed": "Failed to add: {{message}}",
   "errors": {
     "refreshProject": "Could not refresh the project.",
     "searchFiles": "Could not search project files.",

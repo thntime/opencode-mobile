@@ -64,6 +64,17 @@
     "removeLabel": "{{name}} हटाएं",
     "empty": "कोई प्रोजेक्ट उपलब्ध नहीं।"
   },
+  "discover": "प्रोजेक्ट खोजें",
+  "discoverRoot": "स्कैन रूट",
+  "discoverStart": "स्कैन शुरू करें",
+  "discoverScanning": "अब तक {{count}} प्रोजेक्ट मिले",
+  "discoverCancel": "स्कैन रद्द करें",
+  "discoverTruncated": "स्कैन सीमा पूरी हो गई; परिणाम अधूरे हो सकते हैं।",
+  "discoverSkipped": "अनुमतियों के कारण {{count}} डायरेक्टरी छोड़ी गईं।",
+  "discoverExisting": "पहले से जोड़ा गया",
+  "discoverAddSelected": "चयनित जोड़ें ({{count}})",
+  "discoverEmpty": "कोई प्रोजेक्ट नहीं मिला।",
+  "discoverFailed": "जोड़ने में विफल: {{message}}",
   "errors": {
     "refreshProject": "प्रोजेक्ट रीफ़्रेश नहीं किया जा सका।",
     "searchFiles": "प्रोजेक्ट फ़ाइलें खोजी नहीं जा सकीं।",
