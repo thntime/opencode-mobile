@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text as NativeText, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text as NativeText, View } from 'react-native';
 import { Button, Checkbox, Text } from 'react-native-paper';
 
 import { WorktreePicker } from '@/components/project/worktree-picker';
@@ -67,6 +67,11 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
   // wrong host.
   const [scannedConnectionId, setScannedConnectionId] = useState<string>();
   const scanSignal = useRef<{ cancelled: boolean } | undefined>(undefined);
+  const rootInputRef = useRef<{ blur: () => void } | null>(null);
+  // Callback ref keeps the wrapper's intersection ref type out of the JSX.
+  const setRootInputRef = useCallback((instance: { blur: () => void } | null) => {
+    rootInputRef.current = instance;
+  }, []);
   // Progress mirror: the scanner reports results only when it settles, so the
   // live counter and the cancelled view are fed from each listing instead.
   const scanFound = useRef<string[]>([]);
@@ -177,12 +182,17 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
     // Keep what was already discovered visible instead of flashing an empty list.
     const found = scanFound.current;
     setCandidates(found.map((path) => ({ path, exists: scanExisting.current.has(path) })));
-    setSelectedPaths(found.filter((path) => !scanExisting.current.has(path)));
+    // Nothing is preselected: a stray tap on the add button must not batch-add.
+    setSelectedPaths([]);
     setScanned(true);
     setScannedConnectionId(connectionId);
     setScanning(false);
   };
   const startScan = () => {
+    // The keyboard covers the lower half of the sheet, so hide it before the
+    // results arrive; the root input is not focused again afterwards.
+    Keyboard.dismiss();
+    rootInputRef.current?.blur();
     const root = scanRoot.trim();
     if (!root || scanning) return;
     const id = connectionId;
@@ -220,7 +230,8 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
         // A cancelled scan was already rendered from the progress mirror.
         if (!signal.cancelled) {
           setCandidates(result.candidates);
-          setSelectedPaths(result.candidates.filter((candidate) => !candidate.exists).map((candidate) => candidate.path));
+          // Discovery only surfaces options; the user opts in explicitly.
+          setSelectedPaths([]);
           setTruncated(result.truncated);
           setSkipped(result.skippedForPermission);
           setFailedReads(result.failedReads);
@@ -303,7 +314,7 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
     {adding ? (discovering ? <View style={styles.addForm}>
       <Text style={{ color: palette.muted }}>{t('project:picker.enterPath')}</Text>
       {multipleServers ? <WorkspaceSelect testID="project-discover-server" title={t('common:servers.server')} value={addServer} options={groups.map((group) => ({ value: group.id, label: group.name }))} onChange={changeServer} /> : null}
-      <TextInput testID="project-discover-root" mode="outlined" label={t('project:discoverRoot')} value={scanRoot} onChangeText={changeRoot} autoCapitalize="none" autoCorrect={false} autoFocus={!scanRoot} />
+      <TextInput testID="project-discover-root" ref={setRootInputRef} mode="outlined" label={t('project:discoverRoot')} value={scanRoot} onChangeText={changeRoot} autoCapitalize="none" autoCorrect={false} autoFocus={!scanRoot} />
       {v1Connection ? <Text testID="project-discover-v1-hint" style={{ color: palette.muted }}>{t('project:discoverV1Hint')}</Text> : null}
       {scanError ? <Text testID="project-discover-scan-error" style={{ color: palette.danger }}>{scanError}</Text> : null}
       {scanning ? <>
@@ -312,21 +323,26 @@ export function ProjectPicker({ visible, onClose, activePath, onSelected, testID
       </> : <>
         <Button testID="project-discover-start" mode="contained" disabled={!scanRoot.trim()} onPress={startScan}>{t('project:discoverStart')}</Button>
         {scanned ? <>
-          {candidates.map((candidate, index) => {
-            const selected = !candidate.exists && selectedPaths.includes(candidate.path);
-            return <Pressable key={candidate.path} testID={`project-discover-item-${index}`} accessibilityRole="checkbox"
-              accessibilityState={{ checked: selected, disabled: candidate.exists }} disabled={candidate.exists}
-              onPress={() => toggleCandidate(candidate.path)} style={styles.resultRow}>
-              <Checkbox status={selected ? 'checked' : 'unchecked'} disabled={candidate.exists} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: candidate.exists ? palette.muted : palette.text }}>{candidate.path}</Text>
-                {candidate.exists ? <Text style={{ color: palette.muted }}>{t('project:discoverExisting')}</Text> : null}
-              </View>
-            </Pressable>;
-          })}
-          {candidates.length === 0 ? <Text testID="project-discover-empty">{t('project:discoverEmpty')}</Text> : null}
-          {candidates.length > 0 && candidates.every((candidate) => candidate.exists)
-            ? <Text testID="project-discover-all-existing">{t('project:discoverAllExisting', { count: candidates.length })}</Text> : null}
+          {/* Only the candidate rows scroll; the warnings and the add action stay
+              pinned so a long result list cannot push them off-screen. */}
+          <ScrollView testID="project-discover-results" style={styles.resultScroll}
+            contentContainerStyle={styles.resultList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {candidates.map((candidate, index) => {
+              const selected = !candidate.exists && selectedPaths.includes(candidate.path);
+              return <Pressable key={candidate.path} testID={`project-discover-item-${index}`} accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected, disabled: candidate.exists }} disabled={candidate.exists}
+                onPress={() => toggleCandidate(candidate.path)} style={styles.resultRow}>
+                <Checkbox status={selected ? 'checked' : 'unchecked'} disabled={candidate.exists} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: candidate.exists ? palette.muted : palette.text }}>{candidate.path}</Text>
+                  {candidate.exists ? <Text style={{ color: palette.muted }}>{t('project:discoverExisting')}</Text> : null}
+                </View>
+              </Pressable>;
+            })}
+            {candidates.length === 0 ? <Text testID="project-discover-empty">{t('project:discoverEmpty')}</Text> : null}
+            {candidates.length > 0 && candidates.every((candidate) => candidate.exists)
+              ? <Text testID="project-discover-all-existing">{t('project:discoverAllExisting', { count: candidates.length })}</Text> : null}
+          </ScrollView>
           {truncated ? <Text testID="project-discover-truncated" style={{ color: palette.warning }}>{t('project:discoverTruncated')}</Text> : null}
           {skipped > 0 ? <Text testID="project-discover-skipped" style={{ color: palette.warning }}>{t('project:discoverSkipped', { count: skipped })}</Text> : null}
           {failedReads > 0 ? <Text testID="project-discover-failed-reads" style={{ color: palette.warning }}>{t('project:discoverFailedReads', { count: failedReads })}</Text> : null}
@@ -386,5 +402,7 @@ const styles = StyleSheet.create({
   button: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44, paddingHorizontal: 6 },
   addForm: { gap: 12 },
   formActions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
+  resultScroll: { maxHeight: 320 },
+  resultList: { gap: 2 },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
 });

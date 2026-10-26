@@ -69,6 +69,7 @@ async function picker(options: PickerOptions = {}) {
     ?? (options.focusPath ? (options.v1?.[connectionId] ? options.focusPath : parentDirectory(options.focusPath)) : ''));
   const isV1 = vi.fn((connectionId: string) => Boolean(options.v1?.[connectionId]));
   const refreshProjects = vi.fn(async () => undefined);
+  const dismissKeyboard = vi.fn();
   const scan = vi.fn(options.scanImpl ?? (async () => options.scanResult ?? {
     candidates: [], truncated: false, skippedForPermission: 0, failedReads: 0,
   }));
@@ -82,7 +83,9 @@ async function picker(options: PickerOptions = {}) {
     '@expo/vector-icons': { MaterialCommunityIcons: 'Icon' },
     'react-i18next': { useTranslation: () => ({ t }) },
     'react-native': {
+      Keyboard: { dismiss: dismissKeyboard },
       Pressable: 'Pressable',
+      ScrollView: 'ScrollView',
       StyleSheet: { create: (styles: unknown) => styles },
       Text: 'NativeText',
       View: 'View',
@@ -120,7 +123,7 @@ async function picker(options: PickerOptions = {}) {
   const openDiscover = async () => { await press('project-add-button'); await press('project-discover-open'); };
   return {
     runtime, add, remove, activate, retry, groups, registry,
-    scan, resolveDefaultRoot, isV1, refreshProjects,
+    scan, resolveDefaultRoot, isV1, refreshProjects, dismissKeyboard,
     onClose, onSelected, element, maybe, press, openDiscover,
   };
 }
@@ -159,6 +162,61 @@ describe('project picker discovery', () => {
     expect(view.scan.mock.calls[0][2]).toMatchObject({ signal: expect.anything() });
   });
 
+  it('dismisses the keyboard before scanning so results are not covered', async () => {
+    const view = await picker({ focusPath: '/home/u/work/app' });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    expect(view.dismissKeyboard).toHaveBeenCalledOnce();
+    expect(view.dismissKeyboard.mock.invocationCallOrder[0])
+      .toBeLessThan(view.scan.mock.invocationCallOrder[0]);
+  });
+
+  it('leaves every candidate unselected until the user opts in', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanResult: {
+        candidates: [
+          { path: '/home/u/work/a', exists: false },
+          { path: '/home/u/work/b', exists: false },
+          { path: '/home/u/work/c', exists: false },
+        ],
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    expect(view.element('project-discover-item-0').props.accessibilityState).toMatchObject({ checked: false });
+    expect(view.element('project-discover-item-1').props.accessibilityState).toMatchObject({ checked: false });
+    expect(view.element('project-discover-item-2').props.accessibilityState).toMatchObject({ checked: false });
+    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
+    expect(view.element('project-discover-add').props.disabled).toBe(true);
+    await view.press('project-discover-item-0');
+    expect(view.element('project-discover-item-0').props.accessibilityState).toMatchObject({ checked: true });
+    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:1');
+    expect(view.element('project-discover-add').props.disabled).toBe(false);
+  });
+
+  it('keeps the add action outside the scrolling result list', async () => {
+    const view = await picker({
+      focusPath: '/home/u/work/app',
+      scanResult: {
+        candidates: Array.from({ length: 8 }, (_, index) => ({ path: `/home/u/work/p${index}`, exists: false })),
+        truncated: false,
+        skippedForPermission: 0,
+        failedReads: 0,
+      },
+    });
+    await view.openDiscover();
+    await view.press('project-discover-start');
+    const list = view.element('project-discover-results');
+    expect(list.type).toBe('ScrollView');
+    expect(list.props.style).toMatchObject({ maxHeight: expect.any(Number) });
+    expect(find(list, 'project-discover-add')).toBeUndefined();
+    expect(find(view.runtime.value, 'project-discover-add')).toBeTruthy();
+  });
+
   it('shows the live count and stops the scan when cancelled', async () => {
     const gate = deferredGate<undefined>();
     const view = await picker({
@@ -182,9 +240,11 @@ describe('project picker discovery', () => {
     const scanOptions = view.scan.mock.calls[0][2];
     await view.press('project-discover-cancel');
     expect(scanOptions.signal.cancelled).toBe(true);
-    // Already discovered candidates stay visible after cancelling.
+    // Already discovered candidates stay visible after cancelling, but nothing
+    // is preselected.
     expect(view.element('project-discover-item-0').props.disabled).toBe(false);
-    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:1');
+    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
+    expect(view.element('project-discover-add').props.disabled).toBe(true);
     gate.resolve?.(undefined);
     await view.runtime.settle();
   });
@@ -208,9 +268,12 @@ describe('project picker discovery', () => {
     const existing = view.element('project-discover-item-1');
     expect(existing.props.disabled).toBe(true);
     expect(existing.props.accessibilityState).toMatchObject({ disabled: true, checked: false });
-    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:1');
+    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
     await view.press('project-discover-item-1');
+    expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
+    await view.press('project-discover-item-0');
     expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:1');
+    expect(view.element('project-discover-add').props.disabled).toBe(false);
     await view.press('project-discover-item-0');
     expect(view.element('project-discover-add').props.children).toContain('project:discoverAddSelected:0');
     expect(view.element('project-discover-add').props.disabled).toBe(true);
@@ -233,6 +296,8 @@ describe('project picker discovery', () => {
     view.add.mockImplementationOnce(() => first.promise);
     await view.openDiscover();
     await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    await view.press('project-discover-item-1');
     view.element('project-discover-add').props.onPress();
     await view.runtime.settle();
     expect(view.add).toHaveBeenCalledTimes(1);
@@ -257,6 +322,7 @@ describe('project picker discovery', () => {
     });
     await view.openDiscover();
     await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
     await view.press('project-discover-add');
     expect(view.activate).toHaveBeenCalledWith({ connectionId: 'c1', projectPath: '/home/u/work/a' });
     expect(view.onClose).toHaveBeenCalledOnce();
@@ -280,6 +346,9 @@ describe('project picker discovery', () => {
     view.add.mockRejectedValueOnce(new Error('nope'));
     await view.openDiscover();
     await view.press('project-discover-start');
+    await view.press('project-discover-item-0');
+    await view.press('project-discover-item-1');
+    await view.press('project-discover-item-2');
     await view.press('project-discover-add');
     expect(view.add).toHaveBeenCalledTimes(3);
     expect(view.element('project-discover-error-0').props.children).toBe('project:discoverAddFailedPath:/home/u/work/a:boom');
@@ -439,6 +508,7 @@ describe('project picker discovery', () => {
     });
     await view.openDiscover();
     await view.press('project-discover-start');
+    for (let index = 0; index < 11; index += 1) await view.press(`project-discover-item-${index}`);
     await view.press('project-discover-add');
     expect(view.add).not.toHaveBeenCalled();
     expect(view.element('project-discover-error-0').props.children).toBe('project:discoverAddLimit:10');
